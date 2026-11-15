@@ -92,6 +92,24 @@ def list_scans(db_path, limit=20):
         conn.close()
 
 
+def compare_scans(a, b):
+    """Diff two scans by finding name. Returns added/removed/changed."""
+    def by_name(s):
+        return {f["name"]: f for f in s.get("findings") or []}
+
+    fa, fb = by_name(a), by_name(b)
+    added = [fb[n] for n in fb if n not in fa]
+    removed = [fa[n] for n in fa if n not in fb]
+    changed = [{"name": n, "from": fa[n]["severity"],
+                "to": fb[n]["severity"]}
+               for n in fa
+               if n in fb and fa[n]["severity"] != fb[n]["severity"]]
+    return {"score": (a.get("score"), b.get("score")),
+            "coverage": ((a.get("coverage") or {}).get("percent"),
+                         (b.get("coverage") or {}).get("percent")),
+            "added": added, "removed": removed, "changed": changed}
+
+
 def get_scan(db_path, scan_id):
     if not os.path.exists(db_path):
         return None

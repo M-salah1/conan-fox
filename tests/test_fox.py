@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX NOVA v2.00 tests — every engine against a local lab server.
+"""CONAN FOX NOVA v2.10 tests — every engine against a local lab server.
 
 The lab serves a deliberately weak site: no security headers, a
 cookie without flags, /.git/HEAD and /.env public, WordPress 5.8,
@@ -427,7 +427,7 @@ class TestOrchestrator(unittest.TestCase):
         with Lab() as lab:
             scan = engine_mod.run_scan(lab.url, profile="quick",
                                        scope=None)
-        self.assertEqual(scan["tool"], "CONAN FOX NOVA v2.00")
+        self.assertEqual(scan["tool"], "CONAN FOX NOVA v2.10")
         self.assertIsInstance(scan["score"], int)
         self.assertEqual(scan["coverage"]["percent"], 100)
         self.assertEqual(set(scan["engine_status"]),
@@ -448,6 +448,7 @@ class TestOrchestrator(unittest.TestCase):
         self.assertIn("fuzz", scan["engine_status"])
         self.assertIn("owner", scan["engine_status"])
         self.assertIn("resources", scan["engine_status"])
+        self.assertIn("dns", scan["engine_status"])
         self.assertEqual(scan["engine_status"]["owner"]["status"],
                          "completed")
         self.assertEqual(scan["engine_status"]["resources"]["status"],

@@ -33,14 +33,30 @@ def score_line(scan, lang):
 
 def print_report(scan, lang="ar"):
     print("=" * 60)
-    print("🦊 CONAN FOX NOVA v2.00 — %s" % t(lang, "report"))
+    print("🦊 CONAN FOX NOVA v2.10 — %s" % t(lang, "report"))
     print("%s: %s" % (t(lang, "target"), scan.get("target")))
     print("%s: %s" % (t(lang, "profile"), scan.get("profile")))
     print(score_line(scan, lang))
+    val = scan.get("validation") or {}
+    if val:
+        print("%s: %s %s, %s %s, %s %s" % (
+            t(lang, "validation"), val.get("verified", 0),
+            t(lang, "verified"), val.get("observed", 0),
+            t(lang, "observed"), val.get("false_positive", 0),
+            t(lang, "false_positives")))
     dist = scan.get("severity_distribution") or {}
     print("%s: %s" % (t(lang, "findings"),
                       ", ".join("%s=%d" % (k, v) for k, v in dist.items()
                                 if v) or "0"))
+    if scan.get("chains"):
+        print("%s:" % t(lang, "chains"))
+        for c in scan["chains"]:
+            print("  [%s] %s" % (c["severity"].upper(), c["name"]))
+            print("      %s" % c.get("evidence", "")[:200])
+    if scan.get("contradictions"):
+        print("%s:" % t(lang, "contradictions"))
+        for c in scan["contradictions"]:
+            print("  • %s" % c[:200])
     print("=" * 60)
     print("%s:" % t(lang, "engine_status"))
     for name in scan.get("engines") or []:
@@ -52,6 +68,12 @@ def print_report(scan, lang="ar"):
         if run.get("error"):
             line += " — %s" % str(run["error"])[:70]
         print(line + ")")
+    # Validated evidence, grouped by engine (false positives excluded).
+    by_engine = {}
+    for ev in scan.get("evidence") or []:
+        if (ev.get("validation") or {}).get("status") == "false_positive":
+            continue
+        by_engine.setdefault(ev.get("engine"), []).append(ev)
     for name in scan.get("engines") or []:
         res = (scan.get("results") or {}).get(name) or {}
         if res.get("status") != "completed":
@@ -67,9 +89,31 @@ def print_report(scan, lang="ar"):
                     print("  %s: %s" % (key, val))
             elif isinstance(val, (str, int, float, bool)) or val is None:
                 print("  %s: %s" % (key, val))
-        for f in res.get("findings") or []:
-            print("  [%s] %s" % (f["severity"].upper(), f["name"]))
-            print("      %s" % f.get("evidence", "")[:160])
+        for ev in by_engine.get(name) or []:
+            print("  [%s] %s" % (ev["severity"].upper(), ev["name"]))
+            print("      %s" % ev.get("evidence", "")[:160])
+            v = ev.get("validation") or {}
+            print("      %s: %s (%s%%)" % (t(lang, "validation"),
+                                           v.get("status"),
+                                           v.get("confidence")))
+    if scan.get("false_positives"):
+        print("-" * 60)
+        print("%s:" % t(lang, "false_positives"))
+        for fp in scan["false_positives"]:
+            print("  ✗ %s (%s)" % (fp["name"], fp.get("engine")))
+    assets = scan.get("assets") or {}
+    if assets:
+        print("-" * 60)
+        print("%s: %s" % (t(lang, "assets"), assets.get("domain")))
+        print("  subdomains: %d  |  IPs: %s  |  ports: %s" % (
+            assets.get("subdomain_count", 0),
+            ", ".join(assets.get("ips") or []) or "—",
+            ", ".join(str(p) for p in assets.get("open_ports")
+                      or []) or "—"))
+        print("  CMS: %s  |  %s: %s  |  %s: %s" % (
+            assets.get("cms") or "—", "registrar",
+            assets.get("registrar") or "—", "domain days left",
+            assets.get("domain_days_left")))
     print("=" * 60)
     print("%s:" % t(lang, "recommendations"))
     for fix in (scan.get("recommendations") or [])[:8]:
@@ -105,14 +149,14 @@ def to_html(scan, path):
 <title>CONAN FOX NOVA Report — %s</title>
 <style>body{font-family:sans-serif;margin:2em}table{border-collapse:collapse}
 td,th{border:1px solid #ccc;padding:6px;text-align:left}</style></head>
-<body><h1>🦊 CONAN FOX NOVA v2.00 — %s</h1>
+<body><h1>🦊 CONAN FOX NOVA v2.10 — %s</h1>
 <p><b>Target:</b> %s &nbsp; <b>Profile:</b> %s &nbsp; <b>Score:</b> %s
 &nbsp; <b>Coverage:</b> %s%% &nbsp; <b>Duration:</b> %s s</p>
 <h2>Engines</h2><ul>%s</ul>
 <h2>Findings</h2><table><tr><th>Severity</th><th>Finding</th>
 <th>Evidence</th><th>Fix</th></tr>%s</table>
 <h2>Recommendations</h2><ul>%s</ul>
-<p>CONAN FOX NOVA v2.00 — FOX COMPANY — Developer: Hafed Mehdi Salah Eddine</p>
+<p>CONAN FOX NOVA v2.10 — FOX COMPANY — Developer: Hafed Mehdi Salah Eddine</p>
 </body></html>""" % (
         esc(scan.get("target")), esc(scan.get("target")),
         esc(scan.get("target")), esc(scan.get("profile")), esc(score_txt),

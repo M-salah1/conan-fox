@@ -1,11 +1,11 @@
-# 🦊 CONAN FOX NOVA v2.00 — ULTIMATE SECURITY INVESTIGATION SYSTEM
+# 🦊 CONAN FOX NOVA v2.10 — ULTIMATE SECURITY INVESTIGATION SYSTEM
 
 **Developer:** Hafed Mehdi Salah Eddine — Algeria
 **Organization:** FOX COMPANY
 **Platform:** Python 3 (standard library only) — Termux / Linux / Windows
 **Interface:** Terminal console in Arabic / English / French
 
-One tool, sixteen engines. Each engine does the job of a famous
+One tool, seventeen engines. Each engine does the job of a famous
 professional tool — re-implemented in Python for Termux, defensive
 only, no exploitation, no login bypass, no secret values ever shown.
 
@@ -29,6 +29,52 @@ only, no exploitation, no login bypass, no secret values ever shown.
 | `shodan` | Shodan | Host intel — only with your own `SHODAN_API_KEY` env var, else `not_configured` |
 | `owner` | Owner Intelligence | Public RDAP: registrar, registrant org + handle (ID), registration/expiry dates, nameservers; certificate days left |
 | `resources` | Resource Inventory | Every public asset (JS/CSS/images/fonts): status, size, internal/external, broken links |
+| `dns` | DNS Intelligence | A/AAAA/MX/NS/TXT/CNAME/SOA/CAA/DS via DoH, SPF, DMARC, DNSSEC |
+
+## Framework Core (v2.10) — the brain
+
+Engines no longer report straight to the score. Every finding flows
+through a central pipeline:
+
+```
+engines -> Evidence Collector -> Validation Engine -> Correlation Engine
+        -> Scoring -> Final Intelligence Report (+ Asset Intelligence)
+```
+
+- **Evidence Collector** (`core/evidence.py`) — every finding becomes
+  one evidence record: engine, time, what was seen. One ID per record.
+- **Validation Engine** (`core/validator.py`) — every finding is
+  re-checked independently of the engine that found it: missing
+  headers re-fetched, cookies re-checked, exposed paths re-GET,
+  secret/JS patterns re-matched, TLS re-handshaken. Result: verified /
+  observed / false_positive + confidence. False positives are removed
+  from the score and listed separately — never silently counted.
+- **Correlation Engine** (`core/correlation.py`) — merges duplicate
+  findings across engines (one finding per problem) and detects
+  attack chains no single engine can see (XSS session theft,
+  session hijack on the wire, source + secrets exposure), plus
+  contradictions between engines.
+- **Scoring** (`core/scoring.py`) — one place where a score comes
+  from; only validated findings count, and every finding explains
+  WHY it is HIGH (evidence + validation + chain).
+- **Asset Intelligence** (`core/assets.py`) — one linked inventory:
+  domain, subdomains, IPs, ports, certificates, technologies,
+  cookies, pages — and the links between them.
+
+Console (per-engine menu and comparison):
+
+```
+fox > engines                 # list all 17 engines
+fox > engine web https://example.com   # run one engine alone
+fox > compare 1 2             # diff two previous investigations
+```
+
+Still Python stdlib only — no pip installs in Termux. External tools
+(ZAP, Nmap, testssl.sh) stay optional integrations for authorized
+audits, never dependencies.
+
+Next steps on the roadmap: API Intelligence, Code/Dependency
+Intelligence, Digital Forensics timeline, professional dashboard.
 
 ## What NOVA adds (v2.00)
 
@@ -119,7 +165,7 @@ never stored in a file or shown in any report.
 python3 -m unittest tests.test_fox -v
 ```
 
-25 tests, all passing (2026-11-15): every engine against a local lab
+41 tests, all passing (2026-11-15): every engine against a local lab
 server, orchestrator quick/deep, INCOMPLETE on a dead target, SQLite
 round-trip. Smoke: example.com deep scan in ~19s, 10/12 engines
 completed (network + fuzz correctly `not_tested` without

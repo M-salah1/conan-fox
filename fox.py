@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX NOVA v2.00 — entry point.
+"""CONAN FOX NOVA v2.10 — entry point.
 
 Terminal console (Arabic / French / English) + direct scan mode.
     python3 fox.py                  # console
@@ -21,9 +21,11 @@ from fox.core import engine as engine_mod  # noqa: E402
 from fox.core import report as report_mod  # noqa: E402
 from fox.core import storage as storage_mod  # noqa: E402
 from fox.core import verify as verify_mod  # noqa: E402
+from fox.core.http import (get, lower_headers, request_retry,  # noqa: E402
+                           resolve_ips)
 from fox.core.i18n import t  # noqa: E402
 from fox.core.scope import Scope, normalize_url, valid_url  # noqa: E402
-from fox.engines import PROFILES  # noqa: E402
+from fox.engines import BY_NAME, PROFILES  # noqa: E402
 
 SETTINGS_FILE = "fox-settings.json"
 DB_FILE = "fox-scans.db"
@@ -39,7 +41,7 @@ FOX_BANNER = r"""
 
 WELCOME = {
     "ar": [
-        "🦊 CONAN FOX NOVA v2.00 — نسخة عالية",
+        "🦊 CONAN FOX NOVA v2.10 — نسخة عالية",
         "نظام التحقيق الأمني الموحد — FOX COMPANY",
         "المطور: حافظ مهدي صلاح الدين — الجزائر",
         "",
@@ -59,7 +61,7 @@ WELCOME = {
         "الأوامر: profile (quick/deep/forensic) — history — lang — about — exit",
     ],
     "en": [
-        "🦊 CONAN FOX NOVA v2.00 — high edition",
+        "🦊 CONAN FOX NOVA v2.10 — high edition",
         "Unified Security Investigation System — FOX COMPANY",
         "Developer: Hafed Mehdi Salah Eddine — Algeria",
         "",
@@ -79,7 +81,7 @@ WELCOME = {
         "Commands: profile (quick/deep/forensic) — history — lang — about — exit",
     ],
     "fr": [
-        "🦊 CONAN FOX NOVA v2.00 — édition avancée",
+        "🦊 CONAN FOX NOVA v2.10 — édition avancée",
         "Système unifié d'investigation de sécurité — FOX COMPANY",
         "Développeur : Hafed Mehdi Salah Eddine — Algérie",
         "",
@@ -302,10 +304,90 @@ def show_history(lang):
             r["coverage"], r["finished_at"] or ""))
 
 
+def list_engines():
+    print("=" * 60)
+    for name, mod in sorted(BY_NAME.items()):
+        print("  %-12s — %s" % (name, mod.TITLE))
+    print("=" * 60)
+
+
+def run_single_engine(name, url, lang, scope):
+    """Run one engine standalone (framework menu per engine)."""
+    if name not in BY_NAME:
+        print("unknown engine — type engines")
+        return
+    url = normalize_url(url)
+    if not valid_url(url):
+        print(t(lang, "invalid_url"))
+        return
+    host = url.split("/")[2]
+    domain = host.split(":")[0]
+    if domain.startswith("www."):
+        domain = domain[4:]
+    r = request_retry(url, timeout=10, attempts=2)
+    ctx = {"url": url, "host": host, "domain": domain,
+           "authorized": scope.is_authorized(url), "timeout": 8,
+           "html": r.get("body") or "",
+           "headers": lower_headers(r.get("headers") or {}),
+           "cookie_headers": [], "status": r.get("status"),
+           "ips": resolve_ips(domain if "." in domain else host),
+           "pages": [], "scripts": [], "subdomains": [], "tls": {}}
+    try:
+        ctx["cookie_headers"] = list(
+            r.get("headers").get_all("Set-Cookie") or [])
+    except Exception:
+        pass
+    if name in ("semgrep", "secrets"):
+        crawl_res = BY_NAME["crawl"].run(ctx)
+        ctx["scripts"] = (crawl_res.get("data") or {}).get("scripts") or []
+    out = engine_mod.call_with_timeout(
+        lambda: BY_NAME[name].run(ctx), 60)
+    if isinstance(out, dict) and out.get("timed_out"):
+        print("timeout")
+        return
+    print("Engine: %s — %s" % (name, (out or {}).get("status")))
+    for f in (out or {}).get("findings") or []:
+        print("  [%s] %s" % (f["severity"].upper(), f["name"]))
+        print("      %s" % f.get("evidence", "")[:180])
+
+
+def compare_cmd(arg, lang):
+    parts = arg.split()
+    if len(parts) != 2:
+        print("compare <id1> <id2>   (see history for ids)")
+        return
+    try:
+        a = storage_mod.get_scan(DB_FILE, int(parts[0]))
+        b = storage_mod.get_scan(DB_FILE, int(parts[1]))
+    except ValueError:
+        a = b = None
+    if not a or not b:
+        print("scan not found — type history")
+        return
+    diff = storage_mod.compare_scans(a, b)
+    print("=" * 60)
+    print("Compare #%s -> #%s" % (parts[0], parts[1]))
+    print("Score: %s -> %s    Coverage: %s%% -> %s%%" % (
+        diff["score"][0], diff["score"][1],
+        diff["coverage"][0], diff["coverage"][1]))
+    for f in diff["added"]:
+        print("  + [%s] %s" % (f["severity"].upper(), f["name"]))
+    for f in diff["removed"]:
+        print("  - [%s] %s" % (f["severity"].upper(), f["name"]))
+    for c in diff["changed"]:
+        print("  ~ %s: %s -> %s" % (c["name"], c["from"], c["to"]))
+    if not diff["added"] and not diff["removed"] and not diff["changed"]:
+        print("  (no changes)")
+    print("=" * 60)
+
+
 def print_help(lang):
     print("=" * 60)
     print("🦊 %s" % t(lang, "help_title"))
     print("  scan <url>      — %s" % t(lang, "help_scan"))
+    print("  engine <n> <url> — %s" % t(lang, "help_engine"))
+    print("  engines         — %s" % t(lang, "help_engines"))
+    print("  compare <a> <b> — %s" % t(lang, "help_compare"))
     print("  profile <name>  — %s (quick / deep / forensic)" % t(lang, "help_profile"))
     print("  history         — %s" % t(lang, "help_history"))
     print("  lang            — %s" % t(lang, "help_lang"))
@@ -363,6 +445,16 @@ def console():
                 print("quick / deep / forensic")
         elif cmd == "history":
             show_history(lang)
+        elif cmd == "engines":
+            list_engines()
+        elif cmd == "engine":
+            parts = arg.split(None, 1)
+            if len(parts) != 2:
+                print("engine <name> <url>")
+            else:
+                run_single_engine(parts[0], parts[1], lang, scope)
+        elif cmd == "compare":
+            compare_cmd(arg, lang)
         elif cmd == "scan":
             if not arg:
                 try:
