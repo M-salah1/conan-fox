@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX NOVA v2.20 tests — every engine against a local lab server.
+"""CONAN FOX NOVA v2.30 tests — every engine against a local lab server.
 
 The lab serves a deliberately weak site: no security headers, a
 cookie without flags, /.git/HEAD and /.env public, WordPress 5.8,
@@ -23,9 +23,9 @@ from fox.core import engine as engine_mod
 from fox.core import storage as storage_mod
 from fox.core import verify as verify_mod
 from fox.core.scope import Scope
-from fox.engines import (crawl, fuzz, history, httpx, network, owner,
-                         resources, secrets, semgrep, shodan, subdomains,
-                         tech, tls, vuln, web, wordpress)
+from fox.engines import (cookies, crawl, fuzz, history, httpx, network,
+                         owner, resources, secrets, semgrep, shodan,
+                         subdomains, tech, tls, vuln, web, wordpress)
 
 HOME = """<!DOCTYPE html><html><head>
 <title>Fox Lab</title>
@@ -137,15 +137,21 @@ def lab_ctx(url, authorized=False, html=None, headers=None):
 class TestWebEngine(unittest.TestCase):
     def test_missing_headers_and_cookie_flags(self):
         with Lab() as lab:
-            out = web.run(lab_ctx(lab.url))
+            ctx = lab_ctx(lab.url)
+            out = web.run(ctx)
         names = [f["name"] for f in out["findings"]]
         self.assertIn("Missing Content-Security-Policy", names)
         self.assertIn("Missing Strict-Transport-Security (HSTS)", names)
-        # Secure-flag findings only apply on HTTPS sites; the lab is HTTP.
-        self.assertIn("Cookie without HttpOnly flag", names)
-        self.assertIn("Cookie without SameSite attribute", names)
         self.assertIn("Server version disclosed", names)
         self.assertEqual(out["status"], "completed")
+        # Cookie-flag findings now live in the cookies engine, which
+        # checks every crawled page, not just the homepage.
+        # Secure-flag findings only apply on HTTPS sites; the lab is HTTP.
+        cout = cookies.run(ctx)
+        cnames = [f["name"] for f in cout["findings"]]
+        self.assertIn("Cookie 'lab_session' has no HttpOnly flag", cnames)
+        self.assertIn("Cookie 'lab_session' has no SameSite attribute",
+                      cnames)
 
     def test_unreachable_site_is_error_not_findings(self):
         ctx = {"url": "http://127.0.0.1:9/", "host": "127.0.0.1",
@@ -432,7 +438,7 @@ class TestOrchestrator(unittest.TestCase):
         with Lab() as lab:
             scan = engine_mod.run_scan(lab.url, profile="quick",
                                        scope=None)
-        self.assertEqual(scan["tool"], "CONAN FOX NOVA v2.20")
+        self.assertEqual(scan["tool"], "CONAN FOX NOVA v2.30")
         self.assertIsInstance(scan["score"], int)
         self.assertEqual(scan["coverage"]["percent"], 100)
         self.assertEqual(set(scan["engine_status"]),
@@ -454,6 +460,12 @@ class TestOrchestrator(unittest.TestCase):
         self.assertIn("owner", scan["engine_status"])
         self.assertIn("resources", scan["engine_status"])
         self.assertIn("dns", scan["engine_status"])
+        self.assertIn("cookies", scan["engine_status"])
+        self.assertIn("whois", scan["engine_status"])
+        self.assertEqual(scan["engine_status"]["cookies"]["status"],
+                         "completed")
+        self.assertEqual(scan["engine_status"]["whois"]["status"],
+                         "completed")
         self.assertEqual(scan["engine_status"]["owner"]["status"],
                          "completed")
         self.assertEqual(scan["engine_status"]["resources"]["status"],

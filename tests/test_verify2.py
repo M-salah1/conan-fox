@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX NOVA v2.20 tests — content-aware verification, service
+"""CONAN FOX NOVA v2.30 tests — content-aware verification, service
 states, four metrics, resume, CT/RDAP errors as errors.
 
 The aadl.dz v2.00 report showed why this matters: a bare HTTP 200

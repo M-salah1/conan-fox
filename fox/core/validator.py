@@ -74,12 +74,27 @@ def validate_one(ev, ctx, error_fp=None):
                            "header present on re-check")
         return _result("verified", 90, "header still absent on re-check")
 
-    # 2. Cookie flags — re-fetch the homepage cookies.
-    if name in COOKIE_FLAGS:
-        m = re.search(r"cookie (\S+)", evidence)
-        flag = COOKIE_FLAGS[name]
-        r = _reget(ctx.get("url"))
-        if r.get("status") is None or not m:
+    # 2. Cookie flags — re-fetch the page the cookie came from
+    # (the evidence names it: "cookie <name> (page <path>)").
+    # Old-style names ("Cookie without HttpOnly flag") still match.
+    flag = COOKIE_FLAGS.get(name)
+    cname = None
+    m_new = re.match(
+        r"Cookie '(\S+)' has no (Secure|HttpOnly|SameSite)", name)
+    if m_new:
+        cname = m_new.group(1)
+        flag = {"Secure": "secure", "HttpOnly": "httponly",
+                "SameSite": "samesite"}[m_new.group(2)]
+    if flag:
+        if cname is None:
+            m = re.search(r"cookie (\S+)", evidence)
+            cname = m.group(1) if m else None
+        check_url = ctx.get("url")
+        m_page = re.search(r"\(page (\S+)\)", evidence)
+        if m_page and check_url:
+            check_url = check_url.rstrip("/") + m_page.group(1)
+        r = _reget(check_url)
+        if r.get("status") is None or not cname:
             return _result("observed", 60, "re-check unreachable")
         try:
             raw_cookies = list(r.get("headers").get_all("Set-Cookie") or [])
@@ -87,8 +102,7 @@ def validate_one(ev, ctx, error_fp=None):
             raw_cookies = []
         for raw in raw_cookies:
             parts = [p.strip().lower() for p in raw.split(";")]
-            cname = parts[0].split("=")[0] if parts else ""
-            if cname == m.group(1).lower():
+            if parts[0].split("=")[0] == cname.lower():
                 has = {"secure": "secure" in parts,
                        "httponly": "httponly" in parts,
                        "samesite": any(p.startswith("samesite")

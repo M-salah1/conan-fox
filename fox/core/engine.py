@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FOX orchestrator — runs the engines as one investigation (v2.20).
+"""FOX orchestrator — runs the engines as one investigation (v2.30).
 
 Waves (independent engines run in parallel inside each wave):
   1. crawl + web + tls + tech        (needs only the homepage)
@@ -38,6 +38,7 @@ ENGINE_DEADLINES = {
     "subdomains": 60, "history": 30, "httpx": 60, "wordpress": 40,
     "semgrep": 60, "secrets": 40, "network": 90, "fuzz": 90,
     "shodan": 30, "owner": 30, "resources": 60, "dns": 30,
+    "cookies": 40, "whois": 40,
 }
 
 PROFILE_BUDGETS = {"quick": 120, "deep": 240, "forensic": 600}
@@ -149,7 +150,7 @@ def _finalize(url, profile, engines, results, status, ctx, t0, authorized):
     completed = [n for n in engines
                  if (status.get(n) or {}).get("status") == "completed"]
     scan = {
-        "tool": "CONAN FOX NOVA v2.20", "target": url, "profile": profile,
+        "tool": "CONAN FOX NOVA v2.30", "target": url, "profile": profile,
         "kind": "fox-scan",
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                     time.gmtime(time.time() - duration)),
@@ -291,10 +292,12 @@ def _execute(url, profile, scope, settings, progress, existing=None):
     crawl_data = (results.get("crawl") or {}).get("data") or {}
     ctx["pages"] = crawl_data.get("pages") or []
     ctx["scripts"] = crawl_data.get("scripts") or []
+    ctx["crawl_cookies"] = crawl_data.get("cookies") or []
     # The owner engine reads the TLS engine's certificate expiry.
     ctx["tls"] = (results.get("tls") or {}).get("data") or {}
     _run_wave(["vuln", "subdomains", "history", "wordpress", "semgrep",
-               "secrets", "shodan", "owner", "resources", "dns"])
+               "secrets", "shodan", "owner", "resources", "dns",
+               "cookies", "whois"])
     ctx["subdomains"] = ((results.get("subdomains") or {}).get("data") or {}) \
         .get("subdomains") or []
     _run_wave(["httpx"])

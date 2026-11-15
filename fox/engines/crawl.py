@@ -9,7 +9,7 @@ public e-mail addresses from the site's own pages.
 import re
 import urllib.parse
 
-from ..core.http import get
+from ..core.http import get, get_set_cookie_headers, parse_set_cookie
 
 NAME = "crawl"
 TITLE = "Crawler (Katana)"
@@ -36,6 +36,7 @@ def run(ctx):
     styles = set()
     emails = set()
     forms = 0
+    cookies = []
     while queue and len(pages) < max_pages:
         url = queue.pop(0)
         if url in seen:
@@ -45,6 +46,13 @@ def run(ctx):
         if r.get("status") != 200 or not r.get("body"):
             continue
         body = r["body"]
+        # Cookie values are never kept: parse the header into a
+        # value-free record (name + flags only) and drop the value.
+        for raw in get_set_cookie_headers(r.get("headers")):
+            rec = parse_set_cookie(raw)
+            if rec["name"]:
+                rec["page"] = url
+                cookies.append(rec)
         pages.append({"url": url, "status": r["status"],
                       "title": (re.search(r"<title[^>]*>(.*?)</title>", body,
                                           re.I | re.S).group(1).strip()[:80]
@@ -72,4 +80,5 @@ def run(ctx):
                      "discovered": len(seen),
                      "scripts": sorted(scripts)[:20],
                      "stylesheets": sorted(styles)[:20],
-                     "emails": sorted(emails)[:10], "forms": forms}}
+                     "emails": sorted(emails)[:10], "forms": forms,
+                     "cookies": cookies}}

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX NOVA v2.20 framework tests — evidence, validation,
+"""CONAN FOX NOVA v2.30 framework tests — evidence, validation,
 correlation, scoring, assets, DNS intelligence, scan comparison.
 
 The validator tests run against the same local lab server as
@@ -249,7 +249,7 @@ class TestFrameworkOrchestrator(unittest.TestCase):
         names = [c["name"] for c in scan["chains"]]
         self.assertIn("Attack chain: XSS session theft", names)
         self.assertIsInstance(scan["score"], int)
-        self.assertEqual(scan["tool"], "CONAN FOX NOVA v2.20")
+        self.assertEqual(scan["tool"], "CONAN FOX NOVA v2.30")
 
 
 if __name__ == "__main__":

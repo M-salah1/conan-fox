@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX NOVA v2.20 — entry point.
+"""CONAN FOX NOVA v2.30 — entry point.
 
 Terminal console (Arabic / French / English) + direct scan mode.
     python3 fox.py                  # console
@@ -41,7 +41,7 @@ FOX_BANNER = r"""
 
 WELCOME = {
     "ar": [
-        "🦊 CONAN FOX NOVA v2.20 — نسخة عالية",
+        "🦊 CONAN FOX NOVA v2.30 — نسخة عالية",
         "نظام التحقيق الأمني الموحد — FOX COMPANY",
         "المطور: حافظ مهدي صلاح الدين — الجزائر",
         "",
@@ -61,7 +61,7 @@ WELCOME = {
         "الأوامر: profile (quick/deep/forensic) — history — lang — about — exit",
     ],
     "en": [
-        "🦊 CONAN FOX NOVA v2.20 — high edition",
+        "🦊 CONAN FOX NOVA v2.30 — high edition",
         "Unified Security Investigation System — FOX COMPANY",
         "Developer: Hafed Mehdi Salah Eddine — Algeria",
         "",
@@ -81,7 +81,7 @@ WELCOME = {
         "Commands: profile (quick/deep/forensic) — history — lang — about — exit",
     ],
     "fr": [
-        "🦊 CONAN FOX NOVA v2.20 — édition avancée",
+        "🦊 CONAN FOX NOVA v2.30 — édition avancée",
         "Système unifié d'investigation de sécurité — FOX COMPANY",
         "Développeur : Hafed Mehdi Salah Eddine — Algérie",
         "",

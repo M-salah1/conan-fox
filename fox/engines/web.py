@@ -8,6 +8,8 @@ Reads only — never submits a form, never logs in.
 """
 import re
 
+from ..core.http import parse_set_cookie
+
 NAME = "web"
 TITLE = "Web Scanner (ZAP)"
 
@@ -72,41 +74,11 @@ def run(ctx):
             "Remove the X-Powered-By header."))
         data["x_powered_by"] = powered
 
+    # Cookie inventory (names + flags only — values are never kept).
+    # Flag findings live in the cookies engine, which checks every
+    # page the crawler visited, not just the homepage.
     for raw in ctx.get("cookie_headers") or []:
-        parts = [p.strip() for p in raw.split(";")]
-        name = parts[0].split("=")[0] if parts else ""
-        flags = [p.lower() for p in parts[1:]]
-
-        def _attr(attr):
-            for p in flags:
-                if p.startswith(attr + "="):
-                    return p.split("=", 1)[1]
-            return None
-
-        cookie = {"name": name,
-                  "secure": any(p == "secure" for p in flags),
-                  "httponly": any(p == "httponly" for p in flags),
-                  "samesite": _attr("samesite"),
-                  "domain": _attr("domain"), "path": _attr("path"),
-                  "expires": _attr("expires"), "max_age": _attr("max-age"),
-                  "session": _attr("expires") is None
-                             and _attr("max-age") is None}
-        data["cookies"].append(cookie)
-        if not cookie["secure"] and data["https"]:
-            findings.append(_finding(
-                "medium", "Cookie without Secure flag",
-                "cookie %s" % name,
-                "Set the Secure flag on every cookie."))
-        if not cookie["httponly"]:
-            findings.append(_finding(
-                "medium", "Cookie without HttpOnly flag",
-                "cookie %s" % name,
-                "Set the HttpOnly flag so JavaScript cannot read the cookie."))
-        if not cookie["samesite"]:
-            findings.append(_finding(
-                "low", "Cookie without SameSite attribute",
-                "cookie %s" % name,
-                "Set SameSite=Lax (or Strict) on cookies."))
+        data["cookies"].append(parse_set_cookie(raw))
 
     forms = re.findall(r"<form\b[^>]*>", html, re.I)
     data["forms"] = len(forms)

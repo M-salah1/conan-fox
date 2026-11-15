@@ -50,7 +50,7 @@ def correlate(evidences, results):
         findings.append(c)
 
     if ("missing content-security-policy" in names
-            and "cookie without httponly flag" in names
+            and any("httponly" in n for n in names)
             and web_data.get("forms", 0) > 0):
         chain("high", "Attack chain: XSS session theft",
               ["no Content-Security-Policy", "cookie without HttpOnly",
@@ -58,7 +58,7 @@ def correlate(evidences, results):
               "Fix all three together: add CSP, set HttpOnly on every "
               "cookie, and validate form input.")
     if ("site served over plain http" in names
-            and "cookie without httponly flag" in names
+            and any("httponly" in n for n in names)
             and web_data.get("password_fields", 0) > 0):
         chain("high", "Attack chain: session hijack on the wire",
               ["site over plain HTTP", "cookie without HttpOnly",

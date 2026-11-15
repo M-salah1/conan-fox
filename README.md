@@ -1,4 +1,4 @@
-# 🦊 CONAN FOX NOVA v2.20 — ULTIMATE SECURITY INVESTIGATION SYSTEM
+# 🦊 CONAN FOX NOVA v2.30 — ULTIMATE SECURITY INVESTIGATION SYSTEM
 
 **Developer:** Hafed Mehdi Salah Eddine — Algeria
 **Organization:** FOX COMPANY
@@ -13,12 +13,14 @@ only, no exploitation, no login bypass, no secret values ever shown.
 
 | Engine | Does the job of | What it really does |
 | ------ | --------------- | ------------------- |
-| `web` | OWASP ZAP | Security headers, cookie flags, forms, HTTPS enforcement, mixed content |
+| `web` | OWASP ZAP | Security headers, forms, HTTPS enforcement, mixed content |
+| `cookies` | Cookies inventory | Every Set-Cookie from the homepage + all crawled pages: name, flags (Secure/HttpOnly/SameSite), lifetime, first/third-party — values never kept |
+| `whois` | WHOIS (port 43) | Raw registration record via TCP port 43 with referral chain: registrar, registrant org, creation/expiry dates, nameservers, status; RDAP owner engine stays the fallback |
 | `vuln` | Nuclei / Nikto | 16 read-only templates: exposed .git, .env, backups, configs, phpinfo, server-status, API docs |
 | `network` | Nmap | Rate-limited TCP connect scan (common ports + related neighbours), banner grab, TLS probe |
 | `subdomains` | Subfinder / Amass | Certificate Transparency (crt.sh) + DNS wordlist via DoH + wildcard check |
 | `httpx` | httpx | Live probe of every discovered host: status, title, server, TLS |
-| `crawl` | Katana | Same-host crawl: pages, links, forms, scripts, stylesheets, e-mails |
+| `crawl` | Katana | Same-host crawl: pages, links, forms, scripts, stylesheets, e-mails, cookies set on each page |
 | `fuzz` | FFUF | 60-path parallel wordlist probe (authorized targets only) |
 | `tls` | testssl.sh / SSLyze | TLS 1.0–1.3 negotiation, cipher, certificate (issuer/SANs/expiry), HSTS |
 | `tech` | WhatWeb | Server, X-Powered-By, generator, CMS, JS library versions |
@@ -112,6 +114,34 @@ produced a misleading 0%.
   the homepage + 10 scripts + 5 crawled pages. **Crawl** reports
   discovered vs visited pages.
 
+## Cookies + WHOIS (v2.30)
+
+- **Cookies engine** (`engines/cookies.py`) — the homepage is not
+  the only place that sets cookies. The crawler now captures the
+  Set-Cookie header of every page it visits (parsed immediately
+  into a value-free record: name + flags only), and the cookies
+  engine inventories all of them: Secure / HttpOnly / SameSite,
+  session vs persistent, lifetime (long-lived > 1 year is flagged),
+  first-party vs third-party. Cookie-flag findings moved here from
+  the web engine, named per cookie ("Cookie 'sess' has no HttpOnly
+  flag"), and the validator re-checks the exact page the cookie
+  came from. Cookie VALUES are never collected, shown or stored —
+  a value is a session secret; to check a value you own, use
+  Verify (dashboard option 4): type it hidden, get YES/NO +
+  location only.
+- **WHOIS engine** (`engines/whois.py`) — a real RFC 3912 client:
+  TCP port 43, a TLD server map (com/net/org/io/dz/fr/de/uk and
+  more, IANA lookup for the rest), and referral following to the
+  registrar's server (max 3 hops). Parsed fields only: registrar,
+  registrant organization (when published), creation / expiry /
+  update dates with days left, nameservers, status. The raw record
+  is never kept or shown (it can contain personal contact data);
+  registrant e-mail, phone and address are never collected, and a
+  redacted record is reported as redacted. When port 43 is
+  unreachable from the machine running the scan, the engine
+  reports an error and the RDAP-based owner engine stays the
+  fallback — the scan still completes.
+
 ## What NOVA adds (v2.00)
 
 - **Welcome screen** — on entry: tool introduction, the 16 engines,
@@ -198,11 +228,14 @@ never stored in a file or shown in any report.
 ## Tests
 
 ```bash
-python3 -m unittest tests.test_fox -v
+python3 -m unittest tests.test_fox tests.test_framework tests.test_verify2 tests.test_cookies_whois -v
 ```
 
-41 tests, all passing (2026-11-15): every engine against a local lab
-(plus 20 framework/verification tests in tests/test_verify2.py)
+77 tests, all passing (2026-11-15): every engine against a local lab
+(41 in test_fox, 20 framework/verification in test_verify2, 16
+cookies + WHOIS in test_cookies_whois — the WHOIS tests use mocked
+sockets, since port 43 is blocked in the sandbox; on Termux it
+queries the real WHOIS servers)
 server, orchestrator quick/deep, INCOMPLETE on a dead target, SQLite
 round-trip. Smoke: example.com deep scan in ~19s, 10/12 engines
 completed (network + fuzz correctly `not_tested` without

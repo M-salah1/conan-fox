@@ -112,3 +112,58 @@ def lower_headers(headers):
         return {str(k).lower(): v for k, v in dict(headers).items()}
     except Exception:
         return {}
+
+
+def get_set_cookie_headers(headers):
+    """All raw Set-Cookie header values from a response's headers.
+
+    headers may be an HTTPMessage (get_all), a dict, or {}.
+    Returns a list of strings (possibly empty). Never raises.
+    """
+    if headers is None:
+        return []
+    try:
+        vals = headers.get_all("Set-Cookie")
+        if vals:
+            return list(vals)
+    except Exception:
+        pass
+    try:
+        out = []
+        for k, v in dict(headers).items():
+            if str(k).lower() == "set-cookie":
+                if isinstance(v, (list, tuple)):
+                    out.extend(str(x) for x in v)
+                else:
+                    out.append(str(v))
+        return out
+    except Exception:
+        return []
+
+
+def parse_set_cookie(raw):
+    """Parse one Set-Cookie header into a value-free record.
+
+    The cookie VALUE is never kept: a value is a session secret, and
+    a displayed value is a leaked value. The record carries the name,
+    the flags and the attributes only.
+    """
+    parts = [p.strip() for p in (raw or "").split(";")]
+    name = parts[0].split("=")[0].strip() if parts and parts[0] else ""
+    flags = [p.lower() for p in parts[1:]]
+
+    def _attr(attr):
+        for p in flags:
+            if p.startswith(attr + "="):
+                return p.split("=", 1)[1].strip()
+        return None
+
+    expires = _attr("expires")
+    max_age = _attr("max-age")
+    return {"name": name,
+            "secure": "secure" in flags,
+            "httponly": "httponly" in flags,
+            "samesite": _attr("samesite"),
+            "domain": _attr("domain"), "path": _attr("path"),
+            "expires": expires, "max_age": max_age,
+            "session": expires is None and max_age is None}
