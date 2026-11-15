@@ -8,6 +8,7 @@ insecure randomness, hardcoded credential names). Static text
 matching only — nothing is executed, values are never printed.
 """
 import re
+import urllib.parse
 
 from ..core.http import get
 
@@ -45,16 +46,28 @@ def run(ctx):
                 "data": {"error": "homepage unreachable"}}
     findings = []
     checked = []
+    host = ctx.get("host") or ""
     scripts = ctx.get("scripts") or []
     if not scripts:
         # Fall back to script URLs found in the homepage HTML.
         scripts = re.findall(r'<script[^>]+src\s*=\s*["\']([^"\']+)',
                              ctx.get("html") or "", re.I)[:5]
-    for url in scripts[:5]:
+    internal = []
+    external = []
+    for url in scripts:
         if url.startswith("/"):
-            url = (ctx.get("url") or "").rstrip("/") + url
-        elif not url.startswith("http"):
-            continue
+            internal.append((ctx.get("url") or "").rstrip("/") + url)
+        elif url.startswith("http"):
+            try:
+                if urllib.parse.urlparse(url).netloc == host:
+                    internal.append(url)
+                else:
+                    external.append(url)
+            except Exception:
+                continue
+    # Only the site's own code is the site's problem. Third-party
+    # libraries are reported separately, never as site findings.
+    for url in internal[:10]:
         r = get(url, timeout=ctx.get("timeout", 8), max_bytes=200000)
         body = r.get("body") or ""
         if not body:
@@ -67,9 +80,30 @@ def run(ctx):
                 continue
             if m:
                 findings.append({"severity": sev, "name": name,
+                                 "confirmation": "confirmed",
                                  "evidence": "%s: pattern %r (line value "
                                              "redacted)" % (url[:80], name),
                                  "fix": fix})
+    for url in external:
+        r = get(url, timeout=ctx.get("timeout", 8), max_bytes=200000)
+        body = r.get("body") or ""
+        if not body:
+            continue
+        for pattern, sev, name, fix in RULES:
+            try:
+                m = re.search(pattern, body)
+            except re.error:
+                continue
+            if m:
+                findings.append({
+                    "severity": "info", "confirmation": "indicator",
+                    "name": "Pattern in third-party script: %s" % name,
+                    "evidence": "%s (external library — not the site's "
+                                "own code)" % url[:80],
+                    "fix": "Check whether the library version is "
+                           "outdated; the site's own code is not at "
+                           "fault here."})
+                break
     # De-duplicate by rule name.
     seen = set()
     unique = []
@@ -80,4 +114,6 @@ def run(ctx):
     return {"engine": NAME, "status": "completed",
             "findings": unique,
             "data": {"checked": checked, "rules": len(RULES),
-                     "hits": len(unique)}}
+                     "hits": len(unique),
+                     "internal_scripts": len(internal),
+                     "external_scripts": len(external)}}

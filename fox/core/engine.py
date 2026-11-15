@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FOX orchestrator — runs the engines as one investigation.
+"""FOX orchestrator — runs the engines as one investigation (v2.20).
 
 Waves (independent engines run in parallel inside each wave):
   1. crawl + web + tls + tech        (needs only the homepage)
   2. vuln + subdomains + history + wordpress + semgrep + secrets + shodan
+     + owner + resources + dns
   3. httpx                            (needs subdomains)
   4. network + fuzz                   (authorized targets only)
 
 Every engine runs with its own deadline inside one global budget.
 A fast-failing engine is retried once with backoff; a timeout is
-never retried. The score is computed only from completed engines:
-coverage below 50% means INCOMPLETE, never a misleading 0%.
+never retried — it is recorded as "timeout" and can be resumed
+later with resume_scan(), which re-runs only the failed engines.
+
+The final pipeline: evidence -> validation -> correlation ->
+confirmation-weighted scoring. Four separate metrics are reported:
+Security Score (confirmed findings only), Confidence (computed
+from validation), Coverage (measured from what was actually
+done), Verification Rate (share of findings verified).
 """
 import concurrent.futures
 import threading
@@ -60,15 +67,129 @@ def grade_for(score):
     return scoring_mod.grade_for(score)
 
 
-def run_scan(url, profile="deep", scope=None, settings=None,
-             progress=None):
-    """Run one full FOX scan. Returns the scan dict."""
-    settings = settings or {}
-    url = normalize_url(url)
+def _build_ctx(url, scope):
+    """Fetch the homepage once; resolve IPs. Returns (ctx, authorized)."""
+    authorized = False
+    if scope is not None:
+        try:
+            authorized = bool(scope.is_authorized(url))
+        except Exception:
+            authorized = False
     host = url.split("/")[2] if "://" in url else url
     domain = host.split(":")[0]
     if domain.startswith("www."):
         domain = domain[4:]
+    ctx = {"url": url, "host": host, "domain": domain,
+           "authorized": authorized, "timeout": 8,
+           "html": "", "headers": {}, "cookie_headers": [],
+           "status": None, "ips": [], "pages": [], "scripts": [],
+           "subdomains": []}
+    r = request_retry(url, timeout=10, attempts=3)
+    ctx["status"] = r.get("status")
+    ctx["html"] = r.get("body") or ""
+    ctx["headers"] = lower_headers(r.get("headers") or {})
+    try:
+        ctx["cookie_headers"] = list(
+            r.get("headers").get_all("Set-Cookie") or [])
+    except Exception:
+        ctx["cookie_headers"] = []
+    ctx["ips"] = resolve_ips(domain if "." in domain else host)
+    return ctx, authorized
+
+
+def _finalize(url, profile, engines, results, status, ctx, t0, authorized):
+    """Framework pipeline + four metrics -> the scan dict."""
+    raw = []
+    for name in engines:
+        for f in (results.get(name) or {}).get("findings") or []:
+            item = dict(f)
+            item["engine"] = name
+            raw.append(item)
+    evidence = evidence_mod.collect(raw)
+    evidence = validator_mod.validate_all(evidence, ctx)
+    validation_counts = {"verified": 0, "observed": 0, "false_positive": 0}
+    kept = []
+    false_positives = []
+    for ev in evidence:
+        st = (ev.get("validation") or {}).get("status", "observed")
+        validation_counts[st] = validation_counts.get(st, 0) + 1
+        (kept if st != "false_positive" else false_positives).append(ev)
+    findings, chains, contradictions = correlation_mod.correlate(
+        kept, results)
+    # Confirmation level: verified by re-check -> confirmed; a direct
+    # measurement the engine itself confirmed -> confirmed; everything
+    # else is an indicator that needs a human. Info weighs nothing.
+    for f in findings:
+        if f.get("severity") == "info":
+            f["confirmation"] = "info"
+        elif (f.get("validation") or {}).get("status") == "verified":
+            f["confirmation"] = "confirmed"
+        elif f.get("confirmation") != "confirmed":
+            f["confirmation"] = "indicator"
+    assets = assets_mod.build_assets({"results": results}, ctx)
+
+    coverage = scoring_mod.compute_coverage(engines, status, results)
+    reachable = ctx["status"] is not None
+    order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    findings.sort(key=lambda f: order.get(f.get("severity"), 5))
+    if coverage["percent"] < 50 or not reachable:
+        # Too little was measured: the honest result is INCOMPLETE,
+        # never a misleading score.
+        score = None
+        grade = "INCOMPLETE"
+        dist = {}
+        for f in findings:
+            dist[f["severity"]] = dist.get(f["severity"], 0) + 1
+    else:
+        score, grade, dist = scoring_mod.score_findings(findings)
+    confidence = scoring_mod.compute_confidence(validation_counts)
+    verification_rate = scoring_mod.compute_verification_rate(
+        validation_counts)
+    duration = round(time.time() - t0, 1)
+    completed = [n for n in engines
+                 if (status.get(n) or {}).get("status") == "completed"]
+    scan = {
+        "tool": "CONAN FOX NOVA v2.20", "target": url, "profile": profile,
+        "kind": "fox-scan",
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                    time.gmtime(time.time() - duration)),
+        "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "duration_s": duration,
+        "score": score, "grade": grade,
+        "confidence": confidence if score is not None else 0,
+        "coverage": {**coverage,
+                     "completed": len(completed), "total": len(engines),
+                     "missing": [n for n in engines
+                                 if n not in completed]},
+        "metrics": {"security_score": score, "confidence": confidence,
+                    "coverage_percent": coverage["percent"],
+                    "verification_rate": verification_rate},
+        "engines": engines, "engine_status": status,
+        "results": results, "findings": findings,
+        "severity_distribution": dist,
+        "evidence": evidence, "validation": validation_counts,
+        "false_positives": [
+            {"name": ev["name"], "engine": ev["engine"],
+             "evidence": ev["evidence"],
+             "validation": ev["validation"]} for ev in false_positives],
+        "chains": chains, "contradictions": contradictions,
+        "assets": assets,
+        "recommendations": list(dict.fromkeys(
+            f.get("fix", "") for f in findings if f.get("fix")))[:8],
+        "scope": {"kind": "authorized" if authorized else "passive",
+                  "authorized": authorized},
+        "ips": ctx["ips"], "host": ctx["host"], "domain": ctx["domain"],
+        "unreachable": not reachable,
+    }
+    return scan
+
+
+def _execute(url, profile, scope, settings, progress, existing=None):
+    """Run a scan from scratch, or resume one from (results, status).
+    On resume, engines that timed out or errored are re-run; completed
+    engines are kept."""
+    settings = settings or {}
+    url = normalize_url(url)
     budget = int(settings.get("scan_budget_s",
                               PROFILE_BUDGETS.get(profile, 240)))
     deadlines = dict(ENGINE_DEADLINES)
@@ -85,33 +206,16 @@ def run_scan(url, profile="deep", scope=None, settings=None,
     def budget_left():
         return budget - (time.time() - t0)
 
-    authorized = False
-    if scope is not None:
-        try:
-            authorized = bool(scope.is_authorized(url))
-        except Exception:
-            authorized = False
-
+    ctx, authorized = _build_ctx(url, scope)
     engines = PROFILES.get(profile, PROFILES["deep"])
-    ctx = {"url": url, "host": host, "domain": domain,
-           "authorized": authorized, "timeout": 8,
-           "html": "", "headers": {}, "cookie_headers": [],
-           "status": None, "ips": [], "pages": [], "scripts": [],
-           "subdomains": []}
-    results = {}
-    status = {}
-
-    # Homepage once, with retries; everything else builds on it.
-    r = request_retry(url, timeout=10, attempts=3)
-    ctx["status"] = r.get("status")
-    ctx["html"] = r.get("body") or ""
-    ctx["headers"] = lower_headers(r.get("headers") or {})
-    try:
-        ctx["cookie_headers"] = list(
-            r.get("headers").get_all("Set-Cookie") or [])
-    except Exception:
-        ctx["cookie_headers"] = []
-    ctx["ips"] = resolve_ips(domain if "." in domain else host)
+    if existing:
+        results, status = existing
+        for n in list(results):
+            if (status.get(n) or {}).get("status") in ("timeout", "error"):
+                results.pop(n, None)
+                status.pop(n, None)
+    else:
+        results, status = {}, {}
 
     def _run_engine(name):
         """Run one engine with deadline + one fast-failure retry."""
@@ -195,72 +299,33 @@ def run_scan(url, profile="deep", scope=None, settings=None,
         .get("subdomains") or []
     _run_wave(["httpx"])
     _run_wave(["network", "fuzz"])
+    return _finalize(url, profile, engines, results, status, ctx, t0,
+                     authorized)
 
-    # ---- Framework pipeline: evidence -> validation -> correlation
-    #      -> scoring. Only findings that survive validation count.
-    raw = []
-    for name in engines:
-        for f in (results.get(name) or {}).get("findings") or []:
-            item = dict(f)
-            item["engine"] = name
-            raw.append(item)
-    evidence = evidence_mod.collect(raw)
-    evidence = validator_mod.validate_all(evidence, ctx)
-    validation_counts = {"verified": 0, "observed": 0, "false_positive": 0}
-    kept = []
-    false_positives = []
-    for ev in evidence:
-        st = (ev.get("validation") or {}).get("status", "observed")
-        validation_counts[st] = validation_counts.get(st, 0) + 1
-        (kept if st != "false_positive" else false_positives).append(ev)
-    findings, chains, contradictions = correlation_mod.correlate(
-        kept, results)
-    assets = assets_mod.build_assets({"results": results}, ctx)
 
-    completed = [n for n in engines
-                 if status.get(n, {}).get("status") == "completed"]
-    coverage = int(100 * len(completed) / max(1, len(engines)))
-    reachable = ctx["status"] is not None
-    order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
-    findings.sort(key=lambda f: order.get(f.get("severity"), 5))
-    if coverage < 50 or not reachable:
-        # No site was measured (unreachable) or most engines failed:
-        # the honest result is INCOMPLETE, never a score.
-        score = None
-        grade = "INCOMPLETE"
-        dist = {}
-        for f in findings:
-            dist[f["severity"]] = dist.get(f["severity"], 0) + 1
-    else:
-        score, grade, dist = scoring_mod.score_findings(findings)
-    duration = round(time.time() - t0, 1)
-    scan = {
-        "tool": "CONAN FOX NOVA v2.10", "target": url, "profile": profile,
-        "kind": "fox-scan",
-        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
-                                    time.gmtime(time.time() - duration)),
-        "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "duration_s": duration,
-        "score": score, "grade": grade,
-        "confidence": 88 if score is not None else 0,
-        "coverage": {"completed": len(completed), "total": len(engines),
-                     "percent": coverage,
-                     "missing": [n for n in engines if n not in completed]},
-        "engines": engines, "engine_status": status,
-        "results": results, "findings": findings,
-        "severity_distribution": dist,
-        "evidence": evidence, "validation": validation_counts,
-        "false_positives": [
-            {"name": ev["name"], "engine": ev["engine"],
-             "evidence": ev["evidence"],
-             "validation": ev["validation"]} for ev in false_positives],
-        "chains": chains, "contradictions": contradictions,
-        "assets": assets,
-        "recommendations": list(dict.fromkeys(
-            f.get("fix", "") for f in findings if f.get("fix")))[:8],
-        "scope": {"kind": "authorized" if authorized else "passive",
-                  "authorized": authorized},
-        "ips": ctx["ips"], "host": host, "domain": domain,
-        "unreachable": not reachable,
-    }
-    return scan
+def run_scan(url, profile="deep", scope=None, settings=None,
+             progress=None):
+    """Run one full FOX scan. Returns the scan dict."""
+    return _execute(url, profile, scope, settings, progress)
+
+
+def resume_scan(db_path, scan_id, scope=None, settings=None,
+                progress=None):
+    """Re-run the timed-out / failed engines of a stored scan.
+    Returns (scan, resumed_engine_names)."""
+    from ..core import storage as storage_mod
+    old = storage_mod.get_scan(db_path, scan_id)
+    if not old:
+        return None, []
+    profile = old.get("profile", "deep")
+    results = old.get("results") or {}
+    status = old.get("engine_status") or {}
+    resumed = [n for n in (old.get("engines") or [])
+               if (status.get(n) or {}).get("status") in ("timeout", "error")]
+    if not resumed:
+        return old, []
+    scan = _execute(old.get("target"), profile, scope, settings,
+                    progress, existing=(results, status))
+    scan["resumed_from"] = scan_id
+    storage_mod.update_scan(db_path, scan_id, scan)
+    return scan, resumed

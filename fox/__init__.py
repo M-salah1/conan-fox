@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX NOVA v2.10 — ULTIMATE SECURITY INVESTIGATION SYSTEM.
+"""CONAN FOX NOVA v2.20 — ULTIMATE SECURITY INVESTIGATION SYSTEM.
 
 Developer: Hafed Mehdi Salah Eddine — Algeria
 FOX COMPANY — Copyright (c) 2026
@@ -19,6 +19,6 @@ collection by default, active checks only on the operator's own site
 or a site with written authorization. No exploitation, no login
 bypass, no attacks, no secret values ever displayed.
 """
-__version__ = "2.10"
+__version__ = "2.20"
 __author__ = "Hafed Mehdi Salah Eddine"
 __github__ = "M-salah1"

@@ -27,6 +27,7 @@ def collect(findings):
             "engine": f.get("engine", "?"),
             "name": f.get("name", ""),
             "severity": f.get("severity", "info"),
+            "confirmation": f.get("confirmation", "indicator"),
             "evidence": f.get("evidence", ""),
             "fix": f.get("fix", ""),
             "collected_at": _now(),

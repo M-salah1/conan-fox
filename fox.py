@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX NOVA v2.10 — entry point.
+"""CONAN FOX NOVA v2.20 — entry point.
 
 Terminal console (Arabic / French / English) + direct scan mode.
     python3 fox.py                  # console
@@ -41,7 +41,7 @@ FOX_BANNER = r"""
 
 WELCOME = {
     "ar": [
-        "🦊 CONAN FOX NOVA v2.10 — نسخة عالية",
+        "🦊 CONAN FOX NOVA v2.20 — نسخة عالية",
         "نظام التحقيق الأمني الموحد — FOX COMPANY",
         "المطور: حافظ مهدي صلاح الدين — الجزائر",
         "",
@@ -61,7 +61,7 @@ WELCOME = {
         "الأوامر: profile (quick/deep/forensic) — history — lang — about — exit",
     ],
     "en": [
-        "🦊 CONAN FOX NOVA v2.10 — high edition",
+        "🦊 CONAN FOX NOVA v2.20 — high edition",
         "Unified Security Investigation System — FOX COMPANY",
         "Developer: Hafed Mehdi Salah Eddine — Algeria",
         "",
@@ -81,7 +81,7 @@ WELCOME = {
         "Commands: profile (quick/deep/forensic) — history — lang — about — exit",
     ],
     "fr": [
-        "🦊 CONAN FOX NOVA v2.10 — édition avancée",
+        "🦊 CONAN FOX NOVA v2.20 — édition avancée",
         "Système unifié d'investigation de sécurité — FOX COMPANY",
         "Développeur : Hafed Mehdi Salah Eddine — Algérie",
         "",
@@ -381,6 +381,28 @@ def compare_cmd(arg, lang):
     print("=" * 60)
 
 
+def resume_cmd(arg, lang, scope):
+    parts = arg.split()
+    if len(parts) != 1:
+        print("resume <id>   (see history for ids)")
+        return
+    try:
+        scan_id = int(parts[0])
+    except ValueError:
+        print("resume <id>   (see history for ids)")
+        return
+    print("%s #%d ..." % (t(lang, "help_resume"), scan_id))
+    scan, resumed = engine_mod.resume_scan(DB_FILE, scan_id, scope=scope)
+    if scan is None:
+        print("scan not found — type history")
+        return
+    if not resumed:
+        print("nothing to resume — no timed-out or failed engines")
+        return
+    print("resumed: %s" % ", ".join(resumed))
+    report_mod.print_report(scan, lang)
+
+
 def print_help(lang):
     print("=" * 60)
     print("🦊 %s" % t(lang, "help_title"))
@@ -388,6 +410,7 @@ def print_help(lang):
     print("  engine <n> <url> — %s" % t(lang, "help_engine"))
     print("  engines         — %s" % t(lang, "help_engines"))
     print("  compare <a> <b> — %s" % t(lang, "help_compare"))
+    print("  resume <id>     — %s" % t(lang, "help_resume"))
     print("  profile <name>  — %s (quick / deep / forensic)" % t(lang, "help_profile"))
     print("  history         — %s" % t(lang, "help_history"))
     print("  lang            — %s" % t(lang, "help_lang"))
@@ -455,6 +478,8 @@ def console():
                 run_single_engine(parts[0], parts[1], lang, scope)
         elif cmd == "compare":
             compare_cmd(arg, lang)
+        elif cmd == "resume":
+            resume_cmd(arg, lang, scope)
         elif cmd == "scan":
             if not arg:
                 try:

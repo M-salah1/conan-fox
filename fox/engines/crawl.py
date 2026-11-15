@@ -69,6 +69,7 @@ def run(ctx):
                     pass
     return {"engine": NAME, "status": "completed", "findings": [],
             "data": {"pages": pages, "page_count": len(pages),
+                     "discovered": len(seen),
                      "scripts": sorted(scripts)[:20],
                      "stylesheets": sorted(styles)[:20],
                      "emails": sorted(emails)[:10], "forms": forms}}

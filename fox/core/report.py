@@ -23,17 +23,19 @@ def score_line(scan, lang):
             t(lang, "coverage"),
             (scan.get("coverage") or {}).get("percent", 0),
             t(lang, "duration"), scan.get("duration_s"))
-    return "%s: %s%%   %s: %s   %s: %s%%   %s: %s%%   %s: %s s" % (
+    return "%s: %s%%   %s: %s   %s: %s%%   %s: %s%%   %s: %s%%   %s: %s s" % (
         t(lang, "score"), scan.get("score"),
         t(lang, "grade"), scan.get("grade"),
         t(lang, "confidence"), scan.get("confidence"),
         t(lang, "coverage"), (scan.get("coverage") or {}).get("percent", 0),
+        t(lang, "verification_rate"),
+        (scan.get("metrics") or {}).get("verification_rate", 0),
         t(lang, "duration"), scan.get("duration_s"))
 
 
 def print_report(scan, lang="ar"):
     print("=" * 60)
-    print("🦊 CONAN FOX NOVA v2.10 — %s" % t(lang, "report"))
+    print("🦊 CONAN FOX NOVA v2.20 — %s" % t(lang, "report"))
     print("%s: %s" % (t(lang, "target"), scan.get("target")))
     print("%s: %s" % (t(lang, "profile"), scan.get("profile")))
     print(score_line(scan, lang))
@@ -48,6 +50,11 @@ def print_report(scan, lang="ar"):
     print("%s: %s" % (t(lang, "findings"),
                       ", ".join("%s=%d" % (k, v) for k, v in dist.items()
                                 if v) or "0"))
+    comps = ((scan.get("coverage") or {}).get("components") or {})
+    if comps:
+        print("%s: %s" % (t(lang, "coverage"),
+                          ", ".join("%s %s%%" % (k, v)
+                                    for k, v in comps.items())))
     if scan.get("chains"):
         print("%s:" % t(lang, "chains"))
         for c in scan["chains"]:
@@ -81,8 +88,11 @@ def print_report(scan, lang="ar"):
         print("-" * 60)
         print("Engine: %s" % name)
         for key, val in (res.get("data") or {}).items():
-            if key in ("checked", "results", "pages", "scripts", "urls",
-                       "hosts", "subdomains", "open_ports", "checked"):
+            if isinstance(val, dict):
+                print("  %s: %s" % (key, ", ".join(
+                    "%s=%s" % (k, v) for k, v in val.items()) or "—"))
+            elif key in ("checked", "results", "pages", "scripts", "urls",
+                         "hosts", "subdomains", "open_ports", "checked"):
                 if isinstance(val, list):
                     print("  %s: %d items" % (key, len(val)))
                 else:
@@ -90,7 +100,11 @@ def print_report(scan, lang="ar"):
             elif isinstance(val, (str, int, float, bool)) or val is None:
                 print("  %s: %s" % (key, val))
         for ev in by_engine.get(name) or []:
-            print("  [%s] %s" % (ev["severity"].upper(), ev["name"]))
+            conf = ev.get("confirmation") or (
+                (ev.get("validation") or {}).get("status") == "verified"
+                and "confirmed" or "indicator")
+            print("  [%s|%s] %s" % (ev["severity"].upper(), conf,
+                                    ev["name"]))
             print("      %s" % ev.get("evidence", "")[:160])
             v = ev.get("validation") or {}
             print("      %s: %s (%s%%)" % (t(lang, "validation"),
@@ -132,8 +146,11 @@ def to_html(scan, path):
         return html_mod.escape(str(v))
     rows = ""
     for f in scan.get("findings") or []:
-        rows += ("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
-                 % (esc(f.get("severity", "")), esc(f.get("name", "")),
+        rows += ("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td>"
+                 "<td>%s</td></tr>"
+                 % (esc(f.get("severity", "")),
+                    esc(f.get("confirmation", "")),
+                    esc(f.get("name", "")),
                     esc(f.get("evidence", "")[:200]),
                     esc(f.get("fix", "")[:200])))
     engines = ""
@@ -149,18 +166,22 @@ def to_html(scan, path):
 <title>CONAN FOX NOVA Report — %s</title>
 <style>body{font-family:sans-serif;margin:2em}table{border-collapse:collapse}
 td,th{border:1px solid #ccc;padding:6px;text-align:left}</style></head>
-<body><h1>🦊 CONAN FOX NOVA v2.10 — %s</h1>
+<body><h1>🦊 CONAN FOX NOVA v2.20 — %s</h1>
 <p><b>Target:</b> %s &nbsp; <b>Profile:</b> %s &nbsp; <b>Score:</b> %s
-&nbsp; <b>Coverage:</b> %s%% &nbsp; <b>Duration:</b> %s s</p>
+&nbsp; <b>Confidence:</b> %s%% &nbsp; <b>Coverage:</b> %s%%
+&nbsp; <b>Verification rate:</b> %s%% &nbsp; <b>Duration:</b> %s s</p>
 <h2>Engines</h2><ul>%s</ul>
-<h2>Findings</h2><table><tr><th>Severity</th><th>Finding</th>
+<h2>Findings</h2><table><tr><th>Severity</th><th>Confirmation</th>
+<th>Finding</th>
 <th>Evidence</th><th>Fix</th></tr>%s</table>
 <h2>Recommendations</h2><ul>%s</ul>
-<p>CONAN FOX NOVA v2.10 — FOX COMPANY — Developer: Hafed Mehdi Salah Eddine</p>
+<p>CONAN FOX NOVA v2.20 — FOX COMPANY — Developer: Hafed Mehdi Salah Eddine</p>
 </body></html>""" % (
         esc(scan.get("target")), esc(scan.get("target")),
         esc(scan.get("target")), esc(scan.get("profile")), esc(score_txt),
+        esc(scan.get("confidence", 0)),
         esc((scan.get("coverage") or {}).get("percent", 0)),
+        esc((scan.get("metrics") or {}).get("verification_rate", 0)),
         esc(scan.get("duration_s")), engines, rows,
         "".join("<li>%s</li>" % esc(x)
                 for x in scan.get("recommendations") or []))

@@ -56,7 +56,15 @@ def run(ctx):
     html = ctx.get("html") or ""
     _scan_text(html, "homepage", findings)
     checked.append("homepage")
-    for url in (ctx.get("scripts") or [])[:5]:
+    for url in (ctx.get("scripts") or [])[:10]:
+        r = get(url, timeout=ctx.get("timeout", 8), max_bytes=200000)
+        if r.get("body"):
+            _scan_text(r["body"], url, findings)
+            checked.append(url)
+    for page in (ctx.get("pages") or [])[:5]:
+        url = page.get("url") if isinstance(page, dict) else page
+        if not url or url in checked:
+            continue
         r = get(url, timeout=ctx.get("timeout", 8), max_bytes=200000)
         if r.get("body"):
             _scan_text(r["body"], url, findings)

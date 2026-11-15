@@ -22,10 +22,10 @@ import concurrent.futures
 import re
 import time
 
+from ..core import content as content_mod
 from ..core.http import get, lower_headers
 from ..engines import secrets as secrets_mod
 from ..engines import semgrep as semgrep_mod
-from ..engines import vuln as vuln_mod
 
 HEADER_NAMES = {
     "Missing Content-Security-Policy": "content-security-policy",
@@ -56,7 +56,7 @@ def _reget(url, timeout=6):
     return get(url, timeout=timeout, max_bytes=50000)
 
 
-def validate_one(ev, ctx):
+def validate_one(ev, ctx, error_fp=None):
     name = ev.get("name", "")
     evidence = ev.get("evidence", "")
     base = (ctx.get("url") or "").rstrip("/")
@@ -138,7 +138,9 @@ def validate_one(ev, ctx):
             return _result("verified", 90, "pattern still present")
         return _result("false_positive", 95, "pattern gone on re-check")
 
-    # 5. Exposed files (vuln templates + fuzz) — re-GET the path.
+    # 5. Exposed files (vuln templates + fuzz) — re-GET the path and
+    #    classify the answer: a 200 that is an error page, a 403 or a
+    #    body without the claimed structure is a false positive.
     if "exposed" in name.lower() or "publicly reachable" in name:
         path = evidence.split(" -> ")[0].strip()
         if not path.startswith("/"):
@@ -146,16 +148,23 @@ def validate_one(ev, ctx):
         r = _reget(base + path)
         if r.get("status") is None:
             return _result("observed", 60, "re-check unreachable")
-        if r.get("status") != 200:
+        body = r.get("body") or ""
+        ctype = ""
+        try:
+            ctype = (r.get("headers") or {}).get("Content-Type", "") or ""
+        except Exception:
+            pass
+        verdict = content_mod.classify(r.get("status"), ctype,
+                                       len(body), body, error_fp)
+        if verdict["kind"] != "ok":
             return _result("false_positive", 95,
-                           "path now returns HTTP %s" % r.get("status"))
-        for tpath, _sev, tname, tmatch, _fix in vuln_mod.TEMPLATES:
-            if tname == name and tmatch.startswith("status200+marker:"):
-                marker = tmatch.split(":", 1)[1]
-                if marker not in (r.get("body") or ""):
-                    return _result("false_positive", 90,
-                                   "marker absent on re-check")
-        return _result("verified", 90, "path still public on re-check")
+                           "re-check: %s" % verdict["detail"])
+        confirmed, detail = content_mod.analyze_sensitive(
+            path, ctype, len(body), body)
+        if not confirmed:
+            return _result("false_positive", 90,
+                           "re-check: %s" % detail)
+        return _result("verified", 90, "re-check: %s" % detail)
 
     # 6. TLS claims — re-run the exact handshake / cert read.
     if name.startswith("Weak TLS protocol supported: "):
@@ -205,8 +214,14 @@ def validate_one(ev, ctx):
 
 def validate_all(evidences, ctx):
     """Validate every evidence record in parallel."""
+    error_fp = None
+    try:
+        error_fp = content_mod.fingerprint_error_page(
+            (ctx.get("url") or "").rstrip("/"), timeout=6)
+    except Exception:
+        error_fp = None
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
-        futs = {pool.submit(validate_one, ev, ctx): ev
+        futs = {pool.submit(validate_one, ev, ctx, error_fp): ev
                 for ev in evidences}
         for fut in futs:
             ev = futs[fut]

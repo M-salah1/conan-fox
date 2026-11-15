@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX NOVA v2.10 tests — every engine against a local lab server.
+"""CONAN FOX NOVA v2.20 tests — every engine against a local lab server.
 
 The lab serves a deliberately weak site: no security headers, a
 cookie without flags, /.git/HEAD and /.env public, WordPress 5.8,
@@ -92,6 +92,11 @@ class LabHandler(http.server.BaseHTTPRequestHandler):
             self._send(200, "<html>admin</html>")
         elif self.path == "/logo.png":
             self._send(200, "PNGFAKE", "image/png")
+        elif self.path == "/fake-error":
+            # An error page that wrongly answers 200.
+            self._send(200, "not found", "text/html")
+        elif self.path == "/forbidden":
+            self._send(403, "Forbidden", "text/html")
         else:
             self._send(404, "not found", "text/plain")
 
@@ -427,7 +432,7 @@ class TestOrchestrator(unittest.TestCase):
         with Lab() as lab:
             scan = engine_mod.run_scan(lab.url, profile="quick",
                                        scope=None)
-        self.assertEqual(scan["tool"], "CONAN FOX NOVA v2.10")
+        self.assertEqual(scan["tool"], "CONAN FOX NOVA v2.20")
         self.assertIsInstance(scan["score"], int)
         self.assertEqual(scan["coverage"]["percent"], 100)
         self.assertEqual(set(scan["engine_status"]),

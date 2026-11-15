@@ -56,8 +56,18 @@ def run(ctx):
     rdap, err = fetch_json(RDAP_URL % domain, timeout=12,
                            max_bytes=200000)
     if not rdap:
-        data["rdap_error"] = err or "RDAP query failed"
-        return {"engine": NAME, "status": "completed",
+        # A failed RDAP query proves nothing about the owner — the
+        # owner is UNKNOWN, not absent. Many registries (including
+        # .dz) do not publish RDAP at all.
+        data["rdap_error"] = (
+            "%s — owner unknown, not absent (the registry may not "
+            "publish RDAP for this TLD)" % (err or "RDAP query failed"))
+        tls = ctx.get("tls") or {}
+        if tls.get("days_left") is not None:
+            data["cert_days_left"] = tls["days_left"]
+            return {"engine": NAME, "status": "completed",
+                    "findings": [], "data": data}
+        return {"engine": NAME, "status": "error",
                 "findings": [], "data": data}
     data["handle"] = rdap.get("handle")
     for ent in rdap.get("entities") or []:

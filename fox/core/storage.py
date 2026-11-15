@@ -76,6 +76,34 @@ def save_scan(db_path, scan, base_dir=None):
         conn.close()
 
 
+def update_scan(db_path, scan_id, scan):
+    """Replace a stored scan (used by resume) with the new report."""
+    init_db(db_path)
+    payload = json.dumps(scan, ensure_ascii=False)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE scans SET target=?, profile=?, started_at=?,"
+            " finished_at=?, duration_s=?, score=?, grade=?,"
+            " coverage=?, report_json=? WHERE id=?",
+            (scan.get("target"), scan.get("profile"),
+             scan.get("started_at"), scan.get("finished_at"),
+             scan.get("duration_s"), scan.get("score"), scan.get("grade"),
+             (scan.get("coverage") or {}).get("percent"), payload, scan_id))
+        conn.execute("DELETE FROM engine_runs WHERE scan_id=?",
+                     (scan_id,))
+        for name, run in (scan.get("engine_status") or {}).items():
+            conn.execute(
+                "INSERT INTO engine_runs (scan_id, engine, status,"
+                " duration_s, retries, error) VALUES (?,?,?,?,?,?)",
+                (scan_id, name, run.get("status"),
+                 run.get("duration_s"), run.get("retries", 0),
+                 (run.get("error") or "")[:500]))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def list_scans(db_path, limit=20):
     if not os.path.exists(db_path):
         return []

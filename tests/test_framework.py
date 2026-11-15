@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX NOVA v2.10 framework tests — evidence, validation,
+"""CONAN FOX NOVA v2.20 framework tests — evidence, validation,
 correlation, scoring, assets, DNS intelligence, scan comparison.
 
 The validator tests run against the same local lab server as
@@ -35,10 +35,16 @@ def _ev(name, severity="medium", evidence="", engine="web"):
 class TestScoring(unittest.TestCase):
     def test_weights_and_grades(self):
         score, grade, dist = scoring_mod.score_findings([
-            {"severity": "high"}, {"severity": "medium"}])
+            {"severity": "high", "confirmation": "confirmed"},
+            {"severity": "medium", "confirmation": "confirmed"}])
         self.assertEqual(score, 77)
         self.assertEqual(grade, "C")
         self.assertEqual(dist, {"high": 1, "medium": 1})
+        # Same findings as unconfirmed indicators weigh half.
+        score2, _, _ = scoring_mod.score_findings([
+            {"severity": "high", "confirmation": "indicator"},
+            {"severity": "medium", "confirmation": "indicator"}])
+        self.assertEqual(score2, 89)
 
     def test_empty_is_perfect(self):
         score, grade, _ = scoring_mod.score_findings([])
@@ -243,7 +249,7 @@ class TestFrameworkOrchestrator(unittest.TestCase):
         names = [c["name"] for c in scan["chains"]]
         self.assertIn("Attack chain: XSS session theft", names)
         self.assertIsInstance(scan["score"], int)
-        self.assertEqual(scan["tool"], "CONAN FOX NOVA v2.10")
+        self.assertEqual(scan["tool"], "CONAN FOX NOVA v2.20")
 
 
 if __name__ == "__main__":

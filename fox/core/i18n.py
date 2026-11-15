@@ -71,6 +71,8 @@ STRINGS = {
         "help_engine": "تشغيل محرك واحد على موقع",
         "help_engines": "عرض كل المحركات",
         "help_compare": "مقارنة فحصين سابقين",
+        "verification_rate": "نسبة التحقق",
+        "help_resume": "إعادة تشغيل وحدات فحص سابق انتهت مهلتها",
     },
     "en": {
         "app_title": "CONAN FOX NOVA",
@@ -141,6 +143,8 @@ STRINGS = {
         "help_engine": "Run one engine on a site",
         "help_engines": "List all engines",
         "help_compare": "Compare two previous scans",
+        "verification_rate": "Verification rate",
+        "help_resume": "Resume a previous scan's timed-out engines",
     },
     "fr": {
         "app_title": "CONAN FOX NOVA",
@@ -211,6 +215,8 @@ STRINGS = {
         "help_engine": "Lancer un moteur sur un site",
         "help_engines": "Lister tous les moteurs",
         "help_compare": "Comparer deux scans précédents",
+        "verification_rate": "Taux de vérification",
+        "help_resume": "Reprendre les moteurs expirés d'un scan précédent",
     },
 }
 

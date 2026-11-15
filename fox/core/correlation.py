@@ -28,6 +28,7 @@ def correlate(evidences, results):
                 prev.setdefault("engines", []).append(ev.get("engine"))
             continue
         f = {"name": ev.get("name"), "severity": ev.get("severity"),
+             "confirmation": ev.get("confirmation", "indicator"),
              "evidence": ev.get("evidence"), "fix": ev.get("fix"),
              "engines": [ev.get("engine")],
              "validation": ev.get("validation", {})}
@@ -39,7 +40,7 @@ def correlate(evidences, results):
     chains = []
 
     def chain(sev, name, parts, fix):
-        c = {"name": name, "severity": sev,
+        c = {"name": name, "severity": sev, "confirmation": "indicator",
              "evidence": " + ".join(parts), "fix": fix,
              "engines": ["correlation"],
              "validation": {"status": "observed", "confidence": 80,

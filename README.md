@@ -1,4 +1,4 @@
-# 🦊 CONAN FOX NOVA v2.10 — ULTIMATE SECURITY INVESTIGATION SYSTEM
+# 🦊 CONAN FOX NOVA v2.20 — ULTIMATE SECURITY INVESTIGATION SYSTEM
 
 **Developer:** Hafed Mehdi Salah Eddine — Algeria
 **Organization:** FOX COMPANY
@@ -31,7 +31,7 @@ only, no exploitation, no login bypass, no secret values ever shown.
 | `resources` | Resource Inventory | Every public asset (JS/CSS/images/fonts): status, size, internal/external, broken links |
 | `dns` | DNS Intelligence | A/AAAA/MX/NS/TXT/CNAME/SOA/CAA/DS via DoH, SPF, DMARC, DNSSEC |
 
-## Framework Core (v2.10) — the brain
+## Framework Core (v2.20) — the brain
 
 Engines no longer report straight to the score. Every finding flows
 through a central pipeline:
@@ -75,6 +75,42 @@ audits, never dependencies.
 
 Next steps on the roadmap: API Intelligence, Code/Dependency
 Intelligence, Digital Forensics timeline, professional dashboard.
+
+## Intelligent Verification (v2.20) — four honest metrics
+
+The aadl.dz v2.00 report showed the problem: a bare HTTP 200 was
+treated as a confirmed leak, 61 open TCP ports as 61 confirmed
+services, a 403 as a finding, and 15 unconfirmed "High" findings
+produced a misleading 0%.
+
+- **Content-aware verification** (`core/content.py`) — the error
+  page is fingerprinted first (two random paths); a 200 whose body
+  matches it is an error page, not a file. Sensitive files must
+  structurally match what they claim (.env needs KEY= lines, .sql
+  needs SQL keywords, .git/HEAD must start with "ref:"). Only key
+  NAMES are ever reported.
+- **Status classification** — 200 real content / redirect /
+  auth required / forbidden (not a finding) / absent / rate
+  limited / server error. 403 is never a vulnerability.
+- **Network service states** — tcp_open → service_identified →
+  service_confirmed (banner match / HTTP response / TLS handshake).
+  An empty banner is usually a firewall answering SYNs, not a
+  service. No authentication is ever attempted.
+- **Four separate metrics** — Security Score (confirmed findings
+  only; indicators weigh half; false positives and info weigh
+  nothing), Confidence (computed from validation, never fixed),
+  Coverage (measured: engines + crawl visited/discovered +
+  subdomains probed/found + ports), Verification Rate (share of
+  findings verified).
+- **Resume** — `resume <id>` re-runs only the timed-out / failed
+  engines of a stored scan and updates it.
+- **Errors are errors** — a CT 404 or RDAP 404 means "unknown, not
+  absent"; subdomains/owner report the error instead of claiming
+  nothing exists.
+- **Semgrep** analyses only the site's own scripts; third-party
+  libraries are reported separately as info. **Secrets** now checks
+  the homepage + 10 scripts + 5 crawled pages. **Crawl** reports
+  discovered vs visited pages.
 
 ## What NOVA adds (v2.00)
 
@@ -166,6 +202,7 @@ python3 -m unittest tests.test_fox -v
 ```
 
 41 tests, all passing (2026-11-15): every engine against a local lab
+(plus 20 framework/verification tests in tests/test_verify2.py)
 server, orchestrator quick/deep, INCOMPLETE on a dead target, SQLite
 round-trip. Smoke: example.com deep scan in ~19s, 10/12 engines
 completed (network + fuzz correctly `not_tested` without

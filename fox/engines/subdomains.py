@@ -54,6 +54,12 @@ def run(ctx):
     ct, err = _ct_subdomains(domain, timeout=timeout)
     data["ct"] = ct
     data["ct_error"] = err
+    if err:
+        # A CT error proves nothing about subdomains — they are
+        # UNKNOWN, not absent. The wordlist below still runs.
+        data["ct_note"] = ("Certificate Transparency unreachable (%s) — "
+                           "subdomains from CT are unknown, not absent."
+                           % err)
     # Wildcard check: a random name must NOT resolve.
     probe = "".join(random.choice(string.ascii_lowercase) for _ in range(12))
     if doh("%s.%s" % (probe, domain), "A", timeout=timeout):
@@ -73,5 +79,10 @@ def run(ctx):
             "name": "Wildcard DNS is enabled",
             "evidence": "random subdomain %s.%s resolves" % (probe, domain),
             "fix": "Disable wildcard DNS unless it is required."})
+    if err and not dns_found:
+        # Both sources failed: the engine did not measure anything.
+        return {"engine": NAME, "status": "error",
+                "findings": [],
+                "data": {**data, "error": data.get("ct_note")}}
     return {"engine": NAME, "status": "completed",
             "findings": findings, "data": data}
