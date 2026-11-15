@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX v1.00 tests — every engine against a local lab server.
+"""CONAN FOX NOVA v2.00 tests — every engine against a local lab server.
 
 The lab serves a deliberately weak site: no security headers, a
 cookie without flags, /.git/HEAD and /.env public, WordPress 5.8,
@@ -21,10 +21,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fox.core import engine as engine_mod
 from fox.core import storage as storage_mod
+from fox.core import verify as verify_mod
 from fox.core.scope import Scope
-from fox.engines import (crawl, fuzz, history, httpx, network, secrets,
-                         semgrep, shodan, subdomains, tech, tls, vuln,
-                         web, wordpress)
+from fox.engines import (crawl, fuzz, history, httpx, network, owner,
+                         resources, secrets, semgrep, shodan, subdomains,
+                         tech, tls, vuln, web, wordpress)
 
 HOME = """<!DOCTYPE html><html><head>
 <title>Fox Lab</title>
@@ -34,9 +35,13 @@ HOME = """<!DOCTYPE html><html><head>
 <link rel="stylesheet" href="/style.css">
 </head><body>
 <a href="/about">About</a> <a href="/contact">Contact</a>
-<form action="/login" method="post"><input name="user"></form>
+<form action="/login" method="post"><input name="user">
+<input type="hidden" name="csrf_token" value="abc123hidden">
+<input type="password" name="pwd"></form>
 <img src="/wp-content/themes/twentytwenty/logo.png">
 <img src="/wp-content/plugins/akismet/logo.png">
+<img src="/logo.png">
+<img src="/missing.png">
 </body></html>"""
 
 APP_JS = ('var api_key = "secret12345";\n'
@@ -85,6 +90,8 @@ class LabHandler(http.server.BaseHTTPRequestHandler):
             self._send(200, "<html>WordPress Version 5.8</html>")
         elif self.path == "/admin":
             self._send(200, "<html>admin</html>")
+        elif self.path == "/logo.png":
+            self._send(200, "PNGFAKE", "image/png")
         else:
             self._send(404, "not found", "text/plain")
 
@@ -290,6 +297,115 @@ class TestHttpxEngine(unittest.TestCase):
         self.assertEqual(out["data"]["hosts"][0]["status"], 200)
 
 
+class TestWebHiddenFields(unittest.TestCase):
+    def test_hidden_field_names_only_and_password_field(self):
+        with Lab() as lab:
+            out = web.run(lab_ctx(lab.url))
+        self.assertIn("csrf_token", out["data"]["hidden_fields"])
+        self.assertEqual(out["data"]["password_fields"], 1)
+        self.assertTrue(any("Password field on a non-HTTPS page" in f["name"]
+                            for f in out["findings"]))
+        # The hidden value is never collected, shown or stored.
+        blob = json.dumps(out, ensure_ascii=False)
+        self.assertNotIn("abc123hidden", blob)
+        cookie = out["data"]["cookies"][0]
+        self.assertTrue(cookie["session"])
+        self.assertIsNone(cookie["expires"])
+
+
+class TestOwnerEngine(unittest.TestCase):
+    RDAP = {
+        "handle": "12345-DOMAIN",
+        "entities": [
+            {"roles": ["registrar"],
+             "vcardArray": ["vcard",
+                            [["fn", {}, "text", "Example Registrar, Inc."]]]},
+            {"roles": ["registrant"], "handle": "REG-1",
+             "vcardArray": ["vcard",
+                            [["fn", {}, "text", "Example Org"]]]},
+        ],
+        "events": [
+            {"eventAction": "registration",
+             "eventDate": "2020-01-01T00:00:00Z"},
+            {"eventAction": "expiration",
+             "eventDate": "2027-06-01T00:00:00Z"},
+        ],
+        "nameservers": [{"ldhName": "ns1.example.com"}],
+        "status": ["active"],
+    }
+
+    def _ctx(self):
+        return {"url": "https://example.com", "host": "example.com",
+                "domain": "example.com", "authorized": False, "timeout": 5,
+                "html": "", "headers": {}, "cookie_headers": [],
+                "status": 200, "ips": [], "pages": [], "scripts": [],
+                "subdomains": [], "tls": {}}
+
+    def test_rdap_owner_and_expiry(self):
+        with mock.patch("fox.engines.owner.fetch_json",
+                        return_value=(self.RDAP, None)):
+            out = owner.run(self._ctx())
+        self.assertEqual(out["data"]["registrar"],
+                         "Example Registrar, Inc.")
+        self.assertEqual(out["data"]["registrant"], "Example Org")
+        self.assertEqual(out["data"]["registrant_id"], "REG-1")
+        self.assertEqual(out["data"]["handle"], "12345-DOMAIN")
+        self.assertGreater(out["data"]["days_left"], 100)
+        self.assertEqual(out["data"]["nameservers"],
+                         ["ns1.example.com"])
+        self.assertEqual(out["findings"], [])
+
+    def test_expiry_soon_is_flagged(self):
+        import datetime
+        soon = (datetime.datetime.utcnow()
+                + datetime.timedelta(days=10)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ")
+        rdap = dict(self.RDAP)
+        rdap["events"] = [
+            {"eventAction": "registration",
+             "eventDate": "2020-01-01T00:00:00Z"},
+            {"eventAction": "expiration", "eventDate": soon},
+        ]
+        with mock.patch("fox.engines.owner.fetch_json",
+                        return_value=(rdap, None)):
+            out = owner.run(self._ctx())
+        self.assertEqual(out["data"]["days_left"], 9)
+        self.assertTrue(any("expires soon" in f["name"]
+                            for f in out["findings"]))
+
+
+class TestResourcesEngine(unittest.TestCase):
+    def test_assets_and_broken(self):
+        with Lab() as lab:
+            ctx = lab_ctx(lab.url)
+            ctx["scripts"] = [lab.url + "app.js",
+                              lab.url + "jquery-1.12.4.min.js"]
+            out = resources.run(ctx)
+        self.assertGreaterEqual(out["data"]["count"], 4)
+        broken = [r["url"] for r in out["data"]["broken"]]
+        self.assertTrue(any(u.endswith("/missing.png") for u in broken))
+        self.assertGreater(out["data"]["total_kb"], 0)
+        self.assertTrue(any("broken resources" in f["name"]
+                            for f in out["findings"]))
+
+
+class TestVerify(unittest.TestCase):
+    def test_verify_finds_secret_in_public_js_without_showing_it(self):
+        with Lab() as lab:
+            scan = {"target": lab.url,
+                    "results": {
+                        "crawl": {"data": {
+                            "pages": [{"url": lab.url}],
+                            "scripts": [lab.url + "app.js"]}},
+                        "fuzz": {"data": {"interesting": []}}}}
+            out = verify_mod.verify_secret(scan, "secret12345")
+        self.assertEqual(len(out["found"]), 1)
+        self.assertTrue(out["found"][0]["where"].endswith("/app.js"))
+        self.assertNotIn("secret12345", json.dumps(out))
+        absent = verify_mod.verify_secret(scan, "definitely-not-here-xyz")
+        self.assertEqual(absent["found"], [])
+
+
 class TestShodanEngine(unittest.TestCase):
     def test_not_configured_without_key(self):
         with mock.patch.dict(os.environ, {}, clear=False):
@@ -311,7 +427,7 @@ class TestOrchestrator(unittest.TestCase):
         with Lab() as lab:
             scan = engine_mod.run_scan(lab.url, profile="quick",
                                        scope=None)
-        self.assertEqual(scan["tool"], "CONAN FOX v1.00")
+        self.assertEqual(scan["tool"], "CONAN FOX NOVA v2.00")
         self.assertIsInstance(scan["score"], int)
         self.assertEqual(scan["coverage"]["percent"], 100)
         self.assertEqual(set(scan["engine_status"]),
@@ -330,6 +446,12 @@ class TestOrchestrator(unittest.TestCase):
         self.assertIn("Git repository exposed (.git/HEAD is public)", names)
         self.assertIn("network", scan["engine_status"])
         self.assertIn("fuzz", scan["engine_status"])
+        self.assertIn("owner", scan["engine_status"])
+        self.assertIn("resources", scan["engine_status"])
+        self.assertEqual(scan["engine_status"]["owner"]["status"],
+                         "completed")
+        self.assertEqual(scan["engine_status"]["resources"]["status"],
+                         "completed")
         self.assertLess(scan["duration_s"], 180)
 
     def test_dead_target_is_incomplete_not_zero(self):

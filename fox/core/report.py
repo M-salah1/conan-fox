@@ -33,7 +33,7 @@ def score_line(scan, lang):
 
 def print_report(scan, lang="ar"):
     print("=" * 60)
-    print("🦊 CONAN FOX v1.00 — %s" % t(lang, "report"))
+    print("🦊 CONAN FOX NOVA v2.00 — %s" % t(lang, "report"))
     print("%s: %s" % (t(lang, "target"), scan.get("target")))
     print("%s: %s" % (t(lang, "profile"), scan.get("profile")))
     print(score_line(scan, lang))
@@ -102,17 +102,17 @@ def to_html(scan, path):
     score_txt = "INCOMPLETE" if score is None else "%s%% (%s)" % (
         score, scan.get("grade"))
     doc = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<title>CONAN FOX Report — %s</title>
+<title>CONAN FOX NOVA Report — %s</title>
 <style>body{font-family:sans-serif;margin:2em}table{border-collapse:collapse}
 td,th{border:1px solid #ccc;padding:6px;text-align:left}</style></head>
-<body><h1>🦊 CONAN FOX v1.00 — %s</h1>
+<body><h1>🦊 CONAN FOX NOVA v2.00 — %s</h1>
 <p><b>Target:</b> %s &nbsp; <b>Profile:</b> %s &nbsp; <b>Score:</b> %s
 &nbsp; <b>Coverage:</b> %s%% &nbsp; <b>Duration:</b> %s s</p>
 <h2>Engines</h2><ul>%s</ul>
 <h2>Findings</h2><table><tr><th>Severity</th><th>Finding</th>
 <th>Evidence</th><th>Fix</th></tr>%s</table>
 <h2>Recommendations</h2><ul>%s</ul>
-<p>CONAN FOX v1.00 — FOX COMPANY — Developer: Hafed Mehdi Salah Eddine</p>
+<p>CONAN FOX NOVA v2.00 — FOX COMPANY — Developer: Hafed Mehdi Salah Eddine</p>
 </body></html>""" % (
         esc(scan.get("target")), esc(scan.get("target")),
         esc(scan.get("target")), esc(scan.get("profile")), esc(score_txt),

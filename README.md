@@ -1,11 +1,11 @@
-# 🦊 CONAN FOX v1.00 — ULTIMATE SECURITY INVESTIGATION SYSTEM
+# 🦊 CONAN FOX NOVA v2.00 — ULTIMATE SECURITY INVESTIGATION SYSTEM
 
 **Developer:** Hafed Mehdi Salah Eddine — Algeria
 **Organization:** FOX COMPANY
 **Platform:** Python 3 (standard library only) — Termux / Linux / Windows
 **Interface:** Terminal console in Arabic / English / French
 
-One tool, fourteen engines. Each engine does the job of a famous
+One tool, sixteen engines. Each engine does the job of a famous
 professional tool — re-implemented in Python for Termux, defensive
 only, no exploitation, no login bypass, no secret values ever shown.
 
@@ -27,6 +27,29 @@ only, no exploitation, no login bypass, no secret values ever shown.
 | `wordpress` | WPScan | WP detection, public version, themes/plugins, REST API (detection only) |
 | `semgrep` | Semgrep | Static patterns in public JS: eval, innerHTML, hardcoded credentials |
 | `shodan` | Shodan | Host intel — only with your own `SHODAN_API_KEY` env var, else `not_configured` |
+| `owner` | Owner Intelligence | Public RDAP: registrar, registrant org + handle (ID), registration/expiry dates, nameservers; certificate days left |
+| `resources` | Resource Inventory | Every public asset (JS/CSS/images/fonts): status, size, internal/external, broken links |
+
+## What NOVA adds (v2.00)
+
+- **Welcome screen** — on entry: tool introduction, the 16 engines,
+  developer credit, how-to. `about` shows it again any time.
+- **Owner Intelligence** — the site owner's public identity and ID
+  (registrar + registrant handle from RDAP), domain expiry in days,
+  certificate expiry in days. Redacted data is reported UNKNOWN.
+- **Cookies, fully detailed** — every cookie by name with Secure /
+  HttpOnly / SameSite / domain / path / expiry / session flags.
+  Values are never collected or shown.
+- **Hidden fields & password fields** — hidden `<input>` names,
+  password-field count, HTML-comment pattern scan. Names only;
+  values are never collected or shown.
+- **Resource inventory** — all public assets with status and size.
+- **Verification Mode** — after a scan, dashboard option **4. Verify**:
+  type an owner-provided value hidden; FOX checks in memory whether
+  it appears in any public place the scan found and answers YES/NO +
+  location only. The value never appears in any result or report.
+  Real passwords and session values are never displayed by FOX —
+  a displayed secret is a leaked secret.
 
 ## What is NOT inside, and why
 
@@ -96,7 +119,7 @@ never stored in a file or shown in any report.
 python3 -m unittest tests.test_fox -v
 ```
 
-20 tests, all passing (2026-11-15): every engine against a local lab
+25 tests, all passing (2026-11-15): every engine against a local lab
 server, orchestrator quick/deep, INCOMPLETE on a dead target, SQLite
 round-trip. Smoke: example.com deep scan in ~19s, 10/12 engines
 completed (network + fuzz correctly `not_tested` without

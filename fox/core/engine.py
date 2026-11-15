@@ -27,7 +27,7 @@ ENGINE_DEADLINES = {
     "web": 30, "crawl": 60, "tls": 30, "tech": 20, "vuln": 90,
     "subdomains": 60, "history": 30, "httpx": 60, "wordpress": 40,
     "semgrep": 60, "secrets": 40, "network": 90, "fuzz": 90,
-    "shodan": 30,
+    "shodan": 30, "owner": 30, "resources": 60,
 }
 
 PROFILE_BUDGETS = {"quick": 120, "deep": 240, "forensic": 600}
@@ -196,8 +196,10 @@ def run_scan(url, profile="deep", scope=None, settings=None,
     crawl_data = (results.get("crawl") or {}).get("data") or {}
     ctx["pages"] = crawl_data.get("pages") or []
     ctx["scripts"] = crawl_data.get("scripts") or []
+    # The owner engine reads the TLS engine's certificate expiry.
+    ctx["tls"] = (results.get("tls") or {}).get("data") or {}
     _run_wave(["vuln", "subdomains", "history", "wordpress", "semgrep",
-               "secrets", "shodan"])
+               "secrets", "shodan", "owner", "resources"])
     ctx["subdomains"] = ((results.get("subdomains") or {}).get("data") or {}) \
         .get("subdomains") or []
     _run_wave(["httpx"])
@@ -225,7 +227,7 @@ def run_scan(url, profile="deep", scope=None, settings=None,
         dist[f["severity"]] = dist.get(f["severity"], 0) + 1
     duration = round(time.time() - t0, 1)
     scan = {
-        "tool": "CONAN FOX v1.00", "target": url, "profile": profile,
+        "tool": "CONAN FOX NOVA v2.00", "target": url, "profile": profile,
         "kind": "fox-scan",
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                     time.gmtime(time.time() - duration)),

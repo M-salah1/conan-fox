@@ -3,7 +3,7 @@
 """Interface strings in Arabic, English and French."""
 STRINGS = {
     "ar": {
-        "app_title": "CONAN FOX",
+        "app_title": "CONAN FOX NOVA",
         "app_subtitle": "نظام التحقيق الأمني الموحد",
         "developer": "المطور: حافظ مهدي صلاح الدين — الجزائر",
         "org": "FOX COMPANY",
@@ -54,9 +54,16 @@ STRINGS = {
         "recommendations": "التوصيات",
         "not_configured": "غير مفعّل — يحتاج مفتاح API في متغير البيئة",
         "back": "رجوع",
+        "about": "حول الأداة",
+        "verify": "تحقق",
+        "verify_prompt": "أدخل القيمة المراد التحقق منها (لن تظهر على الشاشة):",
+        "verify_found": "موجودة في:",
+        "verify_not_found": "غير موجودة في أي مكان عام تم فحصه",
+        "verify_checked": "أماكن تم فحصها",
+        "welcome_press": "اضغط Enter للمتابعة",
     },
     "en": {
-        "app_title": "CONAN FOX",
+        "app_title": "CONAN FOX NOVA",
         "app_subtitle": "Unified Security Investigation System",
         "developer": "Developer: Hafed Mehdi Salah Eddine — Algeria",
         "org": "FOX COMPANY",
@@ -107,9 +114,16 @@ STRINGS = {
         "recommendations": "Recommendations",
         "not_configured": "Not configured — needs an API key in the environment",
         "back": "Back",
+        "about": "About",
+        "verify": "Verify",
+        "verify_prompt": "Enter the value to verify (hidden):",
+        "verify_found": "FOUND in:",
+        "verify_not_found": "NOT FOUND in any public place checked",
+        "verify_checked": "places checked",
+        "welcome_press": "Press Enter to continue",
     },
     "fr": {
-        "app_title": "CONAN FOX",
+        "app_title": "CONAN FOX NOVA",
         "app_subtitle": "Système unifié d'investigation de sécurité",
         "developer": "Développeur : Hafed Mehdi Salah Eddine — Algérie",
         "org": "FOX COMPANY",
@@ -160,6 +174,13 @@ STRINGS = {
         "recommendations": "Recommandations",
         "not_configured": "Non configuré — nécessite une clé API dans l'environnement",
         "back": "Retour",
+        "about": "À propos",
+        "verify": "Vérifier",
+        "verify_prompt": "Entrez la valeur à vérifier (masquée) :",
+        "verify_found": "TROUVÉ dans :",
+        "verify_not_found": "NON TROUVÉ dans les endroits publics vérifiés",
+        "verify_checked": "endroits vérifiés",
+        "welcome_press": "Appuyez sur Entrée pour continuer",
     },
 }
 

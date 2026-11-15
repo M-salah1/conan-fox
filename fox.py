@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CONAN FOX v1.00 — entry point.
+"""CONAN FOX NOVA v2.00 — entry point.
 
 Terminal console (Arabic / French / English) + direct scan mode.
     python3 fox.py                  # console
     python3 fox.py https://example.com
     python3 fox.py https://example.com --profile forensic --json out.json
 """
+import getpass
 import json
 import os
 import sys
@@ -19,6 +20,7 @@ from fox import __version__  # noqa: E402
 from fox.core import engine as engine_mod  # noqa: E402
 from fox.core import report as report_mod  # noqa: E402
 from fox.core import storage as storage_mod  # noqa: E402
+from fox.core import verify as verify_mod  # noqa: E402
 from fox.core.i18n import t  # noqa: E402
 from fox.core.scope import Scope, normalize_url, valid_url  # noqa: E402
 from fox.engines import PROFILES  # noqa: E402
@@ -32,8 +34,84 @@ FOX_BANNER = r"""
    (   =^=   )
     (       )
      |  |  |
-  🦊 CONAN FOX v%s — FOX COMPANY
+  🦊 CONAN FOX NOVA v%s — FOX COMPANY
 """
+
+WELCOME = {
+    "ar": [
+        "🦊 CONAN FOX NOVA v2.00 — نسخة عالية",
+        "نظام التحقيق الأمني الموحد — FOX COMPANY",
+        "المطور: حافظ مهدي صلاح الدين — الجزائر",
+        "",
+        "ماذا تفعل الأداة؟",
+        "• 16 محرك تحقيق: فحص الويب، الثغرات، الشبكة، النطاقات الفرعية،",
+        "  TLS، التقنيات، الأرشيف، الأسرار، ووردبريس، تحليل JS،",
+        "  المالك، وموارد الموقع",
+        "• التعريف بصاحب الموقع: المعرّف العام، المسجّل، وتاريخ انتهاء",
+        "  النطاق والشهادات — بالأيام المتبقية",
+        "• جلب الكوكيز (بالأسماء والأعلام فقط) وموارد الموقع",
+        "  والحقول المخفية (بالأسماء فقط) وحقول كلمات السر",
+        "• تقارير JSON/HTML وحفظ كل فحص في قاعدة بيانات",
+        "",
+        "كيف تعمل؟",
+        "اكتب:  scan https://example.com",
+        "ثم وافق على الشروط بـ y — وسيبدأ الفحص.",
+        "الأوامر: profile (quick/deep/forensic) — history — lang — about — exit",
+    ],
+    "en": [
+        "🦊 CONAN FOX NOVA v2.00 — high edition",
+        "Unified Security Investigation System — FOX COMPANY",
+        "Developer: Hafed Mehdi Salah Eddine — Algeria",
+        "",
+        "What does it do?",
+        "• 16 investigation engines: web, vulnerabilities, network,",
+        "  subdomains, TLS, tech, history, secrets, WordPress, JS",
+        "  analysis, owner intelligence, site resources",
+        "• Owner identification: public ID, registrar, and expiry",
+        "  dates of the domain and its certificates — days left",
+        "• Cookies (names and flags only), site resources, hidden",
+        "  fields (names only) and password fields",
+        "• JSON/HTML reports and every scan saved in a database",
+        "",
+        "How to work?",
+        "Type:  scan https://example.com",
+        "Then accept the terms with y — and the scan begins.",
+        "Commands: profile (quick/deep/forensic) — history — lang — about — exit",
+    ],
+    "fr": [
+        "🦊 CONAN FOX NOVA v2.00 — édition avancée",
+        "Système unifié d'investigation de sécurité — FOX COMPANY",
+        "Développeur : Hafed Mehdi Salah Eddine — Algérie",
+        "",
+        "Que fait l'outil ?",
+        "• 16 moteurs : web, vulnérabilités, réseau, sous-domaines,",
+        "  TLS, technologies, archives, secrets, WordPress, analyse JS,",
+        "  propriétaire, ressources du site",
+        "• Identification du propriétaire : identifiant public, bureau",
+        "  d'enregistrement, dates d'expiration du domaine et des",
+        "  certificats — jours restants",
+        "• Cookies (noms et drapeaux uniquement), ressources du site,",
+        "  champs cachés (noms uniquement) et champs de mot de passe",
+        "• Rapports JSON/HTML et chaque scan sauvé en base de données",
+        "",
+        "Comment l'utiliser ?",
+        "Tapez :  scan https://example.com",
+        "Puis acceptez les conditions avec y — le scan commence.",
+        "Commandes : profile (quick/deep/forensic) — history — lang — about — exit",
+    ],
+}
+
+
+def show_welcome(lang, pause=True):
+    print("=" * 60)
+    for line in WELCOME.get(lang, WELCOME["en"]):
+        print(line)
+    print("=" * 60)
+    if pause:
+        try:
+            input("%s " % t(lang, "welcome_press"))
+        except (EOFError, KeyboardInterrupt):
+            pass
 
 
 def load_settings():
@@ -172,8 +250,8 @@ def do_scan(url, profile, lang, scope, settings):
 def dashboard(scan, lang):
     while True:
         print("-" * 60)
-        print("0. %s    1. %s    2. JSON    3. HTML" % (
-            t(lang, "back"), t(lang, "findings")))
+        print("0. %s    1. %s    2. JSON    3. HTML    4. %s" % (
+            t(lang, "back"), t(lang, "findings"), t(lang, "verify")))
         try:
             choice = input("%s " % t(lang, "enter_choice")).strip()
         except (EOFError, KeyboardInterrupt):
@@ -191,6 +269,23 @@ def dashboard(scan, lang):
         elif choice == "3":
             path = report_mod.to_html(scan, "fox-report.html")
             print("Saved: %s" % path)
+        elif choice == "4":
+            # Verification Mode: compare without ever displaying.
+            try:
+                secret = getpass.getpass("%s " % t(lang, "verify_prompt"))
+            except (EOFError, KeyboardInterrupt):
+                continue
+            if not secret:
+                continue
+            res = verify_mod.verify_secret(scan, secret)
+            secret = ""
+            if res["found"]:
+                print("%s" % t(lang, "verify_found"))
+                for f in res["found"]:
+                    print("  • %s (%s)" % (f["where"], f["kind"]))
+            else:
+                print(t(lang, "verify_not_found"))
+            print("%s: %d" % (t(lang, "verify_checked"), res["checked"]))
 
 
 def show_history(lang):
@@ -214,6 +309,7 @@ def print_help(lang):
     print("  profile <name>  — %s (quick / deep / forensic)" % t(lang, "help_profile"))
     print("  history         — %s" % t(lang, "help_history"))
     print("  lang            — %s" % t(lang, "help_lang"))
+    print("  about           — %s" % t(lang, "about"))
     print("  help            — %s" % t(lang, "help_title"))
     print("  exit / 0        — %s" % t(lang, "help_exit"))
     print("=" * 60)
@@ -233,6 +329,7 @@ def console():
     print(t(lang, "welcome"))
     print(t(lang, "how_to"))
     print("profile: %s" % profile)
+    show_welcome(lang)
     while True:
         try:
             raw = input("\nfox > ").strip()
@@ -249,6 +346,8 @@ def console():
             return
         if cmd == "help":
             print_help(lang)
+        elif cmd in ("about", "welcome"):
+            show_welcome(lang, pause=False)
         elif cmd == "lang":
             lang = choose_language()
             settings["language"] = lang
@@ -283,7 +382,7 @@ def console():
 
 def main(argv):
     if "--version" in argv:
-        print("CONAN FOX v%s" % __version__)
+        print("CONAN FOX NOVA v%s" % __version__)
         return 0
     settings = load_settings()
     lang = settings.get("language", "ar")

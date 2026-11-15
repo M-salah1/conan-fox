@@ -76,11 +76,21 @@ def run(ctx):
         parts = [p.strip() for p in raw.split(";")]
         name = parts[0].split("=")[0] if parts else ""
         flags = [p.lower() for p in parts[1:]]
+
+        def _attr(attr):
+            for p in flags:
+                if p.startswith(attr + "="):
+                    return p.split("=", 1)[1]
+            return None
+
         cookie = {"name": name,
                   "secure": any(p == "secure" for p in flags),
                   "httponly": any(p == "httponly" for p in flags),
-                  "samesite": next((p.split("=", 1)[1] for p in flags
-                                    if p.startswith("samesite")), None)}
+                  "samesite": _attr("samesite"),
+                  "domain": _attr("domain"), "path": _attr("path"),
+                  "expires": _attr("expires"), "max_age": _attr("max-age"),
+                  "session": _attr("expires") is None
+                             and _attr("max-age") is None}
         data["cookies"].append(cookie)
         if not cookie["secure"] and data["https"]:
             findings.append(_finding(
@@ -106,6 +116,58 @@ def run(ctx):
                 "high", "Form submits over plain HTTP",
                 form[:120], "Submit every form over HTTPS only."))
             break
+
+    # Hidden form fields: NAMES only. A hidden value can be a token
+    # or a secret, so values are never collected or shown.
+    hidden = []
+    for tag in re.findall(r"<input\b[^>]*>", html, re.I):
+        if re.search(r'type\s*=\s*["\']hidden["\']', tag, re.I):
+            m = re.search(r'name\s*=\s*["\']([^"\']+)', tag, re.I)
+            if m:
+                hidden.append(m.group(1))
+    data["hidden_fields"] = hidden
+    if hidden:
+        findings.append(_finding(
+            "info", "%d hidden form fields" % len(hidden),
+            "names: %s" % ", ".join(hidden[:8]),
+            "Review hidden fields: never put secrets or credentials "
+            "in them."))
+        sensitive = [n for n in hidden
+                     if re.search(r"token|key|secret|password|passwd|auth",
+                                  n, re.I)]
+        if sensitive:
+            findings.append(_finding(
+                "medium", "Hidden field with a sensitive-looking name",
+                "field name: %s (value never shown)" % sensitive[0],
+                "Move tokens and secrets to server-side sessions; never "
+                "ship them in hidden fields."))
+
+    # Password fields: structure only — never a value.
+    pwd_count = len(re.findall(
+        r'<input\b[^>]*type\s*=\s*["\']password["\']', html, re.I))
+    data["password_fields"] = pwd_count
+    if pwd_count and not data["https"]:
+        findings.append(_finding(
+            "high", "Password field on a non-HTTPS page",
+            "%d password field(s) found" % pwd_count,
+            "Serve the login page over HTTPS only."))
+
+    # HTML comments: pattern names only, never the comment text.
+    comments = re.findall(r"<!--(.*?)-->", html, re.S)
+    data["html_comments"] = len(comments)
+    for pat, label in ((r"(?i)todo|fixme", "TODO/FIXME note"),
+                       (r"(?i)password\s*[:=]", "password mention"),
+                       (r"(?i)api[_-]?key\s*[:=]", "API key mention"),
+                       (r"(?i)secret\s*[:=]", "secret mention")):
+        if any(re.search(pat, c) for c in comments):
+            findings.append(_finding(
+                "medium",
+                "Sensitive-looking %s in an HTML comment" % label,
+                "pattern found in a comment (content never shown)",
+                "Remove credentials and internal notes from HTML "
+                "comments."))
+            break
+
     if data["https"] and re.search(r'src\s*=\s*["\']http://', html, re.I):
         findings.append(_finding(
             "low", "Mixed content: HTTP resources on an HTTPS page",
